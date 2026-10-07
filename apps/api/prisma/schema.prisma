@@ -1,0 +1,442 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Kimlik ve kiracılar ----------
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  name         String
+  locale       String   @default("tr")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  memberships WorkspaceMember[]
+  sessions    Session[]
+  posts       Post[]            @relation("PostAuthor")
+
+  @@map("users")
+}
+
+model Session {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  refreshTokenHash String    @unique @map("refresh_token_hash")
+  userAgent        String?   @map("user_agent")
+  expiresAt        DateTime  @map("expires_at")
+  revokedAt        DateTime? @map("revoked_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Workspace {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  plan      String   @default("internal")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  members        WorkspaceMember[]
+  brands         Brand[]
+  socialAccounts SocialAccount[]
+  media          MediaAsset[]
+  posts          Post[]
+  auditLogs      AuditLog[]
+  labels         Label[]
+
+  @@map("workspaces")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  EDITOR
+  APPROVER
+  VIEWER
+}
+
+model WorkspaceMember {
+  workspaceId String   @map("workspace_id") @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  role        Role     @default(EDITOR)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, userId])
+  @@index([userId])
+  @@map("workspace_members")
+}
+
+model Brand {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  name        String
+  logoUrl     String?  @map("logo_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  accounts  SocialAccount[]
+  posts     Post[]
+
+  @@index([workspaceId])
+  @@map("brands")
+}
+
+// ---------- Sosyal hesaplar ----------
+
+enum Platform {
+  INSTAGRAM
+  TIKTOK
+  LINKEDIN
+  MOCK
+}
+
+enum AccountType {
+  IG_BUSINESS
+  TIKTOK_CREATOR
+  LI_MEMBER
+  LI_ORGANIZATION
+  MOCK
+}
+
+enum AccountStatus {
+  ACTIVE
+  NEEDS_REAUTH
+  DISCONNECTED
+}
+
+model SocialAccount {
+  id          String        @id @default(uuid()) @db.Uuid
+  workspaceId String        @map("workspace_id") @db.Uuid
+  brandId     String?       @map("brand_id") @db.Uuid
+  platform    Platform
+  accountType AccountType   @map("account_type")
+  externalId  String        @map("external_id")
+  name        String
+  username    String?
+  avatarUrl   String?       @map("avatar_url")
+  status      AccountStatus @default(ACTIVE)
+  lastError   String?       @map("last_error")
+  // Platforma özel ek bilgiler (ör. LinkedIn şirket sayfası URN'i)
+  metadata    Json?
+  connectedById String?     @map("connected_by_id") @db.Uuid
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  brand         Brand?           @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  credential    OAuthCredential?
+  targets       PostTarget[]
+  conversations Conversation[]
+  metrics       AccountMetric[]
+
+  @@unique([workspaceId, platform, externalId])
+  @@index([workspaceId])
+  @@map("social_accounts")
+}
+
+model OAuthCredential {
+  id                String    @id @default(uuid()) @db.Uuid
+  socialAccountId   String    @unique @map("social_account_id") @db.Uuid
+  // AES-256-GCM ile şifrelenmiş değerler
+  accessTokenEnc    String    @map("access_token_enc")
+  refreshTokenEnc   String?   @map("refresh_token_enc")
+  expiresAt         DateTime? @map("expires_at")
+  refreshExpiresAt  DateTime? @map("refresh_expires_at")
+  scopes            String[]
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  account SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@map("oauth_credentials")
+}
+
+// ---------- Medya ----------
+
+enum MediaStatus {
+  UPLOADING
+  READY
+  FAILED
+}
+
+model MediaAsset {
+  id          String      @id @default(uuid()) @db.Uuid
+  workspaceId String      @map("workspace_id") @db.Uuid
+  uploadedById String?    @map("uploaded_by_id") @db.Uuid
+  fileName    String      @map("file_name")
+  storageKey  String      @unique @map("storage_key")
+  mime        String
+  width       Int?
+  height      Int?
+  durationS   Float?      @map("duration_s")
+  sizeBytes   Int         @map("size_bytes")
+  status      MediaStatus @default(READY)
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  posts     PostMedia[]
+
+  @@index([workspaceId, createdAt])
+  @@map("media_assets")
+}
+
+// ---------- Gönderiler ----------
+
+enum PostStatus {
+  DRAFT
+  PENDING_APPROVAL
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  PARTIALLY_FAILED
+  FAILED
+}
+
+enum TargetStatus {
+  PENDING
+  QUEUED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+}
+
+model Post {
+  id          String     @id @default(uuid()) @db.Uuid
+  workspaceId String     @map("workspace_id") @db.Uuid
+  brandId     String?    @map("brand_id") @db.Uuid
+  authorId    String     @map("author_id") @db.Uuid
+  text        String     @default("")
+  status      PostStatus @default(DRAFT)
+  scheduledAt DateTime?  @map("scheduled_at")
+  publishedAt DateTime?  @map("published_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  brand     Brand?       @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  author    User         @relation("PostAuthor", fields: [authorId], references: [id])
+  media     PostMedia[]
+  targets   PostTarget[]
+  approvals Approval[]
+
+  @@index([workspaceId, scheduledAt])
+  @@index([workspaceId, status])
+  @@map("posts")
+}
+
+model PostMedia {
+  postId       String @map("post_id") @db.Uuid
+  mediaAssetId String @map("media_asset_id") @db.Uuid
+  position     Int
+
+  post  Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  media MediaAsset @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict)
+
+  @@id([postId, mediaAssetId])
+  @@map("post_media")
+}
+
+model PostTarget {
+  id              String       @id @default(uuid()) @db.Uuid
+  postId          String       @map("post_id") @db.Uuid
+  socialAccountId String       @map("social_account_id") @db.Uuid
+  textOverride    String?      @map("text_override")
+  options         Json?
+  status          TargetStatus @default(PENDING)
+  // Yeniden denemelerde çift paylaşımı önlemek için platform tarafındaki ara durum
+  // (Instagram container id, TikTok publish id vb.)
+  providerState   Json?        @map("provider_state")
+  // Geçerli BullMQ iş kimliği; yeniden zamanlamada değişir, eski işler kendini atlar
+  jobId           String?      @map("job_id")
+  externalPostId  String?      @map("external_post_id")
+  permalink       String?
+  errorCode       String?      @map("error_code")
+  errorMessage    String?      @map("error_message")
+  publishedAt     DateTime?    @map("published_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  post     Post             @relation(fields: [postId], references: [id], onDelete: Cascade)
+  account  SocialAccount    @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  attempts PublishAttempt[]
+  metrics  PostMetric[]
+
+  @@unique([postId, socialAccountId])
+  @@index([status])
+  @@map("post_targets")
+}
+
+model PublishAttempt {
+  id           String    @id @default(uuid()) @db.Uuid
+  postTargetId String    @map("post_target_id") @db.Uuid
+  attemptNo    Int       @map("attempt_no")
+  startedAt    DateTime  @default(now()) @map("started_at")
+  finishedAt   DateTime? @map("finished_at")
+  result       String?
+  errorMessage String?   @map("error_message")
+  rawResponse  Json?     @map("raw_response")
+
+  target PostTarget @relation(fields: [postTargetId], references: [id], onDelete: Cascade)
+
+  @@index([postTargetId])
+  @@map("publish_attempts")
+}
+
+// ---------- Faz 2: onay, metrikler, denetim ----------
+
+enum ApprovalDecision {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Approval {
+  id          String           @id @default(uuid()) @db.Uuid
+  postId      String           @map("post_id") @db.Uuid
+  requestedBy String           @map("requested_by") @db.Uuid
+  approverId  String?          @map("approver_id") @db.Uuid
+  decision    ApprovalDecision @default(PENDING)
+  comment     String?
+  decidedAt   DateTime?        @map("decided_at")
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@map("approvals")
+}
+
+model PostMetric {
+  id           String   @id @default(uuid()) @db.Uuid
+  postTargetId String   @map("post_target_id") @db.Uuid
+  capturedAt   DateTime @default(now()) @map("captured_at")
+  metrics      Json
+
+  target PostTarget @relation(fields: [postTargetId], references: [id], onDelete: Cascade)
+
+  @@index([postTargetId, capturedAt])
+  @@map("post_metrics")
+}
+
+model AccountMetric {
+  id              String   @id @default(uuid()) @db.Uuid
+  socialAccountId String   @map("social_account_id") @db.Uuid
+  date            DateTime @db.Date
+  followers       Int?
+  reach           Int?
+  impressions     Int?
+  extra           Json?
+
+  account SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([socialAccountId, date])
+  @@map("account_metrics")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  actorId     String?  @map("actor_id") @db.Uuid
+  action      String
+  entity      String
+  entityId    String?  @map("entity_id")
+  data        Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@map("audit_logs")
+}
+
+// ---------- Faz 3: Inbox (şema hazır, arayüz sonra) ----------
+
+enum ConversationKind {
+  COMMENT_THREAD
+  DIRECT_MESSAGE
+}
+
+enum ConversationStatus {
+  OPEN
+  DONE
+}
+
+model Conversation {
+  id               String             @id @default(uuid()) @db.Uuid
+  socialAccountId  String             @map("social_account_id") @db.Uuid
+  kind             ConversationKind
+  externalThreadId String             @map("external_thread_id")
+  relatedPostId    String?            @map("related_post_id")
+  status           ConversationStatus @default(OPEN)
+  assigneeId       String?            @map("assignee_id") @db.Uuid
+  lastMessageAt    DateTime?          @map("last_message_at")
+  createdAt        DateTime           @default(now()) @map("created_at")
+
+  account  SocialAccount       @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  messages Message[]
+  labels   ConversationLabel[]
+
+  @@unique([socialAccountId, externalThreadId])
+  @@index([status, lastMessageAt])
+  @@map("conversations")
+}
+
+enum MessageDirection {
+  IN
+  OUT
+}
+
+model Message {
+  id               String           @id @default(uuid()) @db.Uuid
+  conversationId   String           @map("conversation_id") @db.Uuid
+  externalId       String           @map("external_id")
+  direction        MessageDirection
+  authorName       String?          @map("author_name")
+  authorExternalId String?          @map("author_external_id")
+  body             String
+  attachments      Json?
+  sentAt           DateTime         @map("sent_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, externalId])
+  @@map("messages")
+}
+
+model Label {
+  id          String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  name        String
+  color       String @default("gray")
+
+  workspace     Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversations ConversationLabel[]
+
+  @@unique([workspaceId, name])
+  @@map("labels")
+}
+
+model ConversationLabel {
+  conversationId String @map("conversation_id") @db.Uuid
+  labelId        String @map("label_id") @db.Uuid
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  label        Label        @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, labelId])
+  @@map("conversation_labels")
+}
