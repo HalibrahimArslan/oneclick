@@ -1,6 +1,7 @@
 import {
   createParamDecorator,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
   SetMetadata,
@@ -54,7 +55,7 @@ export const MinRole = (role: Role) => SetMetadata(MIN_ROLE, role);
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(
-    private readonly reflector: Reflector,
+    @Inject(Reflector) private readonly reflector: Reflector,
     @InjectContainer() private readonly c: Container,
   ) {}
 

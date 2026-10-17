@@ -1,17 +1,93 @@
 @import 'tailwindcss';
 
+/* Belirteçler: DESIGN.md §2. Bileşenlerde yalnızca bu adlar kullanılır. */
 @theme {
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --color-ink: #111827;
-  --color-muted: #6b7280;
-  --color-line: #e5e7eb;
-  --color-canvas: #f7f7f8;
-  --color-accent: #0e7490;
-  --color-accent-soft: #ecfeff;
-  --color-instagram: #d6249f;
+
+  --color-brand-50: #f0f1ff;
+  --color-brand-100: #e1e4ff;
+  --color-brand-200: #c5cafe;
+  --color-brand-500: #5d63f0;
+  --color-brand-600: #4b4fe0;
+  --color-brand-700: #3d3fc2;
+
+  --color-ink: #171d2e;
+  --color-ink-2: #384157;
+  --color-muted: #667085;
+  --color-faint: #98a1b2;
+  --color-line: #e4e7ec;
+  --color-line-strong: #d0d5dd;
+  --color-subtle: #f2f4f7;
+  --color-canvas: #f7f8fa;
+  --color-surface: #ffffff;
+
+  --color-draft: #98a1b2;
+  --color-draft-bg: #f2f4f7;
+  --color-draft-fg: #475467;
+  --color-pending: #f5a524;
+  --color-pending-bg: #fff6e5;
+  --color-pending-fg: #93570a;
+  --color-scheduled: #2e90fa;
+  --color-scheduled-bg: #ebf4ff;
+  --color-scheduled-fg: #175cd3;
+  --color-published: #17b26a;
+  --color-published-bg: #e7f7ef;
+  --color-published-fg: #067647;
+  --color-partial: #f79009;
+  --color-partial-bg: #fef0e1;
+  --color-partial-fg: #b54708;
+  --color-failed: #f04438;
+  --color-failed-bg: #feeceb;
+  --color-failed-fg: #b42318;
+
+  --color-instagram: #e4405f;
   --color-tiktok: #111111;
   --color-linkedin: #0a66c2;
-  --color-mock: #7c3aed;
+  --color-mock: #7a5af8;
+
+  --text-micro: 11px;
+  --text-micro--line-height: 14px;
+  --text-caption: 12px;
+  --text-caption--line-height: 16px;
+  --text-small: 13px;
+  --text-small--line-height: 18px;
+  --text-body: 14px;
+  --text-body--line-height: 20px;
+  --text-heading: 15px;
+  --text-heading--line-height: 22px;
+  --text-title: 20px;
+  --text-title--line-height: 28px;
+
+  --radius-chip: 6px;
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-pop: 14px;
+
+  --shadow-pop: 0 12px 32px -8px rgb(16 24 40 / 0.18), 0 2px 6px rgb(16 24 40 / 0.06);
+  --shadow-modal: 0 24px 64px -12px rgb(16 24 40 / 0.28);
+  --shadow-thumb: 0 1px 2px rgb(16 24 40 / 0.08);
+
+  --animate-pop-in: pop-in 140ms ease-out;
+  --animate-modal-in: modal-in 180ms ease-out;
+  --animate-fade-in: fade-in 140ms ease-out;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
 }
 
 html,
@@ -21,10 +97,19 @@ body,
 }
 
 body {
-  @apply bg-canvas text-ink font-sans antialiased;
+  @apply bg-canvas text-body text-ink font-sans antialiased;
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-brand-500);
   outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
 }

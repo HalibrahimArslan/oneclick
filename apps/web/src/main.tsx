@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { FeedbackProvider } from './components/feedback';
 import { Layout } from './components/Layout';
 import { Spinner } from './components/ui';
 import './index.css';
@@ -19,14 +20,14 @@ const queryClient = new QueryClient({
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { status } = useAuth();
-  if (status === 'loading') return <Spinner />;
+  if (status === 'loading') return <Spinner className="h-full items-center" />;
   if (status === 'anonymous') return <Navigate to="/login" replace />;
   return children;
 }
 
 function GuestOnly({ children }: { children: ReactNode }) {
   const { status } = useAuth();
-  if (status === 'loading') return <Spinner />;
+  if (status === 'loading') return <Spinner className="h-full items-center" />;
   if (status === 'authenticated') return <Navigate to="/calendar" replace />;
   return children;
 }
@@ -42,11 +43,12 @@ function App() {
     <Routes>
       <Route path="/login" element={<GuestOnly><LoginPage /></GuestOnly>} />
       <Route path="/register" element={<GuestOnly><RegisterPage /></GuestOnly>} />
+      {/* Gönderi oluşturma tam ekran çalışır, uygulama kabuğu yok (DESIGN.md §5.3) */}
+      <Route path="/compose" element={<RequireAuth><ComposerPage key="new" /></RequireAuth>} />
+      <Route path="/posts/:id/edit" element={<RequireAuth><EditComposer /></RequireAuth>} />
       <Route element={<RequireAuth><Layout /></RequireAuth>}>
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/posts" element={<PostsPage />} />
-        <Route path="/posts/:id/edit" element={<EditComposer />} />
-        <Route path="/compose" element={<ComposerPage key="new" />} />
         <Route path="/media" element={<MediaPage />} />
         <Route path="/accounts" element={<AccountsPage />} />
       </Route>
@@ -60,7 +62,9 @@ createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AuthProvider>
-          <App />
+          <FeedbackProvider>
+            <App />
+          </FeedbackProvider>
         </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>
