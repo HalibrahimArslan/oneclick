@@ -166,11 +166,12 @@ function PostCard({ post, onOpen, highlighted }: { post: PostDto; onOpen(): void
   return (
     <article
       className={cx(
-        'relative min-w-0 flex-1 overflow-hidden rounded-card border bg-surface transition-colors',
+        // overflow-hidden yok: "Diğer işlemler" menüsü kartın dışına taşabilmeli
+        'relative min-w-0 flex-1 rounded-card border bg-surface transition-colors',
         highlighted ? 'border-brand-200 bg-brand-50' : 'border-line hover:border-line-strong',
       )}
     >
-      <span className={cx('absolute inset-y-0 left-0 w-0.75', statusBar(post.status))} />
+      <span className={cx('absolute inset-y-0 left-0 w-0.75 rounded-l-[11px]', statusBar(post.status))} />
       <button type="button" onClick={onOpen} className="flex w-full gap-4 p-4 pl-5 text-left">
         <div className="min-w-0 flex-1">
           <div className="mb-2 flex items-center gap-2.5">
