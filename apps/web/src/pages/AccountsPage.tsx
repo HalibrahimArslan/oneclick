@@ -125,7 +125,7 @@ export function AccountsPage() {
           </div>
           <p className="mt-4 flex items-start gap-2 text-caption text-muted">
             <Info className="mt-px size-3.5 shrink-0" />
-            Instagram'da Business veya Creator hesabı gerekir. TikTok uygulaması denetimden geçene kadar gönderiler gizli yayınlanır. LinkedIn'de kişisel profil ve,
+            Instagram'da bir Facebook Sayfasına bağlı Business veya Creator hesabı gerekir. TikTok uygulaması denetimden geçene kadar gönderiler gizli yayınlanır. LinkedIn'de kişisel profil ve,
             onay varsa, yönettiğiniz şirket sayfaları bağlanır.
           </p>
         </section>

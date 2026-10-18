@@ -1,18 +1,28 @@
 import type { AppConfig } from '../config';
 import { httpRequest, ProviderError, sleep } from '../lib/http';
-import { secondsFromNow, type ConnectedAccountInfo, type PublishInput, type PublishResult, type SocialProvider, type TokenSet } from './types';
+import { type ConnectedAccountInfo, type PublishInput, type PublishResult, type SocialProvider, type TokenSet } from './types';
 
 /**
- * Instagram API with Instagram Login.
- * Facebook sayfası gerektirmez; yalnızca Business/Creator hesaplarda çalışır.
+ * Instagram API with Facebook Login.
+ * Instagram Professional hesabın bir Facebook Sayfasına bağlı olması gerekir.
+ * Bağlantı: kullanıcı token'ı → uzun ömürlü token → Sayfalar → bağlı Instagram hesapları.
  * Akış: medya container oluştur → işlenmesini bekle → media_publish.
  */
+const SCOPES = [
+  'instagram_basic',
+  'instagram_content_publish',
+  'pages_show_list',
+  'pages_read_engagement',
+  // Sayfa bir Business portföyündeyse me/accounts onu ancak bu izinle döndürür
+  'business_management',
+];
+
 export class InstagramProvider implements SocialProvider {
   readonly platform = 'INSTAGRAM' as const;
   private readonly graph: string;
 
   constructor(private readonly cfg: AppConfig) {
-    this.graph = `https://graph.instagram.com/${cfg.INSTAGRAM_GRAPH_VERSION}`;
+    this.graph = `https://graph.facebook.com/${cfg.INSTAGRAM_GRAPH_VERSION}`;
   }
 
   isConfigured() {
@@ -20,65 +30,79 @@ export class InstagramProvider implements SocialProvider {
   }
 
   getAuthUrl({ state, redirectUri }: { state: string; redirectUri: string }) {
-    const u = new URL('https://www.instagram.com/oauth/authorize');
+    const u = new URL(`https://www.facebook.com/${this.cfg.INSTAGRAM_GRAPH_VERSION}/dialog/oauth`);
     u.searchParams.set('client_id', this.cfg.INSTAGRAM_APP_ID!);
     u.searchParams.set('redirect_uri', redirectUri);
     u.searchParams.set('response_type', 'code');
-    u.searchParams.set('scope', 'instagram_business_basic,instagram_business_content_publish');
+    u.searchParams.set('scope', SCOPES.join(','));
     u.searchParams.set('state', state);
     return u.toString();
   }
 
   async exchangeCode({ code, redirectUri }: { code: string; redirectUri: string }): Promise<ConnectedAccountInfo[]> {
-    // 1) Kısa ömürlü token
-    const short = await httpRequest<any>('https://api.instagram.com/oauth/access_token', {
-      method: 'POST',
-      form: {
+    // 1) Kısa ömürlü kullanıcı token'ı
+    const short = await httpRequest<any>(`${this.graph}/oauth/access_token`, {
+      query: {
         client_id: this.cfg.INSTAGRAM_APP_ID!,
         client_secret: this.cfg.INSTAGRAM_APP_SECRET!,
-        grant_type: 'authorization_code',
         redirect_uri: redirectUri,
-        code: code.replace(/#_$/, ''),
+        code,
       },
     });
-    const shortData = Array.isArray(short.data?.data) ? short.data.data[0] : short.data;
-    const shortToken: string = shortData.access_token;
-    const permissions: string[] =
-      typeof shortData.permissions === 'string' ? shortData.permissions.split(',') : shortData.permissions ?? [];
 
-    // 2) Uzun ömürlü (60 gün) token
-    const long = await httpRequest<any>('https://graph.instagram.com/access_token', {
-      query: { grant_type: 'ig_exchange_token', client_secret: this.cfg.INSTAGRAM_APP_SECRET, access_token: shortToken },
+    // 2) Uzun ömürlü (60 gün) kullanıcı token'ı; bundan alınan Sayfa token'larının süresi dolmaz
+    const long = await httpRequest<any>(`${this.graph}/oauth/access_token`, {
+      query: {
+        grant_type: 'fb_exchange_token',
+        client_id: this.cfg.INSTAGRAM_APP_ID!,
+        client_secret: this.cfg.INSTAGRAM_APP_SECRET!,
+        fb_exchange_token: short.data.access_token,
+      },
+    });
+    const userToken: string = long.data.access_token;
+
+    const perms = await httpRequest<any>(`${this.graph}/me/permissions`, { query: { access_token: userToken } });
+    const scopes: string[] = (perms.data?.data ?? [])
+      .filter((p: any) => p.status === 'granted')
+      .map((p: any) => p.permission);
+
+    // 3) Kullanıcının Sayfaları ve bunlara bağlı Instagram hesapları
+    const pages = await httpRequest<any>(`${this.graph}/me/accounts`, {
+      query: {
+        fields: 'id,name,access_token,instagram_business_account{id,username,name,profile_picture_url}',
+        limit: 100,
+        access_token: userToken,
+      },
     });
 
-    const token: TokenSet = {
-      accessToken: long.data.access_token,
-      expiresAt: secondsFromNow(long.data.expires_in),
-      scopes: permissions,
-    };
-
-    const me = await httpRequest<any>(`${this.graph}/me`, {
-      query: { fields: 'user_id,username,name,profile_picture_url,account_type', access_token: token.accessToken },
-    });
-
-    return [
-      {
+    const infos: ConnectedAccountInfo[] = [];
+    for (const page of pages.data?.data ?? []) {
+      const ig = page.instagram_business_account;
+      if (!ig) continue;
+      infos.push({
         accountType: 'IG_BUSINESS',
-        externalId: String(me.data.user_id ?? me.data.id),
-        name: me.data.name || me.data.username,
-        username: me.data.username,
-        avatarUrl: me.data.profile_picture_url ?? null,
-        metadata: { igAccountType: me.data.account_type },
-        token,
-      },
-    ];
+        externalId: String(ig.id),
+        name: ig.name || ig.username,
+        username: ig.username,
+        avatarUrl: ig.profile_picture_url ?? null,
+        metadata: { pageId: page.id, pageName: page.name },
+        token: { accessToken: page.access_token, expiresAt: null, scopes },
+      });
+    }
+
+    if (infos.length === 0) {
+      throw new ProviderError(
+        'Facebook Sayfalarınıza bağlı bir Instagram Professional hesabı bulunamadı. ' +
+          'Instagram hesabını Sayfaya bağlayın ve izin ekranında Sayfayı seçin.',
+        { retryable: false, code: 'ig_no_linked_account' },
+      );
+    }
+    return infos;
   }
 
-  async refreshToken(token: TokenSet): Promise<TokenSet | null> {
-    const res = await httpRequest<any>('https://graph.instagram.com/refresh_access_token', {
-      query: { grant_type: 'ig_refresh_token', access_token: token.accessToken },
-    });
-    return { accessToken: res.data.access_token, expiresAt: secondsFromNow(res.data.expires_in), scopes: token.scopes };
+  /** Sayfa token'larının süresi dolmaz; yenileme gerekmez. */
+  async refreshToken(): Promise<TokenSet | null> {
+    return null;
   }
 
   async publish(input: PublishInput): Promise<PublishResult> {
