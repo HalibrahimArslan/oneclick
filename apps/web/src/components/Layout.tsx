@@ -3,6 +3,7 @@ import {
   Check,
   ChevronsUpDown,
   Image,
+  KeyRound,
   LayoutList,
   LogOut,
   Menu,
@@ -10,6 +11,7 @@ import {
   PanelLeftOpen,
   Plug,
   Plus,
+  Briefcase,
   SquarePen,
   X,
   type LucideIcon,
@@ -30,7 +32,14 @@ const NAV: { group: string; items: { to: string; label: string; icon: LucideIcon
       { to: '/media', label: 'Medya', icon: Image },
     ],
   },
-  { group: 'Ayarlar', items: [{ to: '/accounts', label: 'Hesaplar', icon: Plug }] },
+  {
+    group: 'Ayarlar',
+    items: [
+      { to: '/accounts', label: 'Hesaplar', icon: Plug },
+      { to: '/clients', label: 'Müşteriler', icon: Briefcase },
+      { to: '/settings/apps', label: 'Platform uygulamaları', icon: KeyRound },
+    ],
+  },
 ];
 
 export function Logo({ size = 28 }: { size?: number }) {

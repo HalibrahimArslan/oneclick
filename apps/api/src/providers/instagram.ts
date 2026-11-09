@@ -1,6 +1,6 @@
 import type { AppConfig } from '../config';
 import { httpRequest, ProviderError, sleep } from '../lib/http';
-import { type ConnectedAccountInfo, type PublishInput, type PublishResult, type SocialProvider, type TokenSet } from './types';
+import { type ConnectedAccountInfo, type PlatformAppCredentials, type PublishInput, type PublishResult, type SocialProvider, type TokenSet } from './types';
 
 /**
  * Instagram API with Facebook Login.
@@ -25,13 +25,9 @@ export class InstagramProvider implements SocialProvider {
     this.graph = `https://graph.facebook.com/${cfg.INSTAGRAM_GRAPH_VERSION}`;
   }
 
-  isConfigured() {
-    return Boolean(this.cfg.INSTAGRAM_APP_ID && this.cfg.INSTAGRAM_APP_SECRET);
-  }
-
-  getAuthUrl({ state, redirectUri }: { state: string; redirectUri: string }) {
+  getAuthUrl({ state, redirectUri, app }: { state: string; redirectUri: string; app: PlatformAppCredentials }) {
     const u = new URL(`https://www.facebook.com/${this.cfg.INSTAGRAM_GRAPH_VERSION}/dialog/oauth`);
-    u.searchParams.set('client_id', this.cfg.INSTAGRAM_APP_ID!);
+    u.searchParams.set('client_id', app.clientId);
     u.searchParams.set('redirect_uri', redirectUri);
     u.searchParams.set('response_type', 'code');
     u.searchParams.set('scope', SCOPES.join(','));
@@ -39,12 +35,12 @@ export class InstagramProvider implements SocialProvider {
     return u.toString();
   }
 
-  async exchangeCode({ code, redirectUri }: { code: string; redirectUri: string }): Promise<ConnectedAccountInfo[]> {
+  async exchangeCode({ code, redirectUri, app }: { code: string; redirectUri: string; app: PlatformAppCredentials }): Promise<ConnectedAccountInfo[]> {
     // 1) Kısa ömürlü kullanıcı token'ı
     const short = await httpRequest<any>(`${this.graph}/oauth/access_token`, {
       query: {
-        client_id: this.cfg.INSTAGRAM_APP_ID!,
-        client_secret: this.cfg.INSTAGRAM_APP_SECRET!,
+        client_id: app.clientId,
+        client_secret: app.clientSecret,
         redirect_uri: redirectUri,
         code,
       },
@@ -54,8 +50,8 @@ export class InstagramProvider implements SocialProvider {
     const long = await httpRequest<any>(`${this.graph}/oauth/access_token`, {
       query: {
         grant_type: 'fb_exchange_token',
-        client_id: this.cfg.INSTAGRAM_APP_ID!,
-        client_secret: this.cfg.INSTAGRAM_APP_SECRET!,
+        client_id: app.clientId,
+        client_secret: app.clientSecret,
         fb_exchange_token: short.data.access_token,
       },
     });

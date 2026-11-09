@@ -27,6 +27,15 @@ const envSchema = z.object({
 
   ENABLE_MOCK_PROVIDER: bool,
 
+  // Yeni kullanıcı kaydı açık mı. İlk kullanıcı (kurulum) her zaman kayıt olabilir.
+  ALLOW_REGISTRATION: z
+    .string()
+    .optional()
+    .transform((v) => v !== 'false' && v !== '0'),
+  // true: panelde uygulama bilgisi girmemiş çalışma alanları aşağıdaki .env anahtarlarını kullanır.
+  // Kaydı herkese açık bir sunucuda false tutun; aksi halde herkes sizin uygulamanız üzerinden bağlanır.
+  PLATFORM_APPS_FROM_ENV: bool,
+
   INSTAGRAM_APP_ID: z.string().optional(),
   INSTAGRAM_APP_SECRET: z.string().optional(),
   INSTAGRAM_GRAPH_VERSION: z.string().default('v23.0'),

@@ -1,6 +1,6 @@
 import type { AppConfig } from '../config';
 import { httpRequest, ProviderError, sleep } from '../lib/http';
-import { secondsFromNow, type ConnectedAccountInfo, type PublishInput, type PublishResult, type SocialProvider, type TokenSet } from './types';
+import { secondsFromNow, type ConnectedAccountInfo, type PlatformAppCredentials, type PublishInput, type PublishResult, type SocialProvider, type TokenSet } from './types';
 
 const API = 'https://open.tiktokapis.com/v2';
 
@@ -14,13 +14,9 @@ export class TikTokProvider implements SocialProvider {
 
   constructor(private readonly cfg: AppConfig) {}
 
-  isConfigured() {
-    return Boolean(this.cfg.TIKTOK_CLIENT_KEY && this.cfg.TIKTOK_CLIENT_SECRET);
-  }
-
-  getAuthUrl({ state, redirectUri }: { state: string; redirectUri: string }) {
+  getAuthUrl({ state, redirectUri, app }: { state: string; redirectUri: string; app: PlatformAppCredentials }) {
     const u = new URL('https://www.tiktok.com/v2/auth/authorize/');
-    u.searchParams.set('client_key', this.cfg.TIKTOK_CLIENT_KEY!);
+    u.searchParams.set('client_key', app.clientId);
     u.searchParams.set('scope', 'user.info.basic,video.publish');
     u.searchParams.set('response_type', 'code');
     u.searchParams.set('redirect_uri', redirectUri);
@@ -38,12 +34,12 @@ export class TikTokProvider implements SocialProvider {
     };
   }
 
-  async exchangeCode({ code, redirectUri }: { code: string; redirectUri: string }): Promise<ConnectedAccountInfo[]> {
+  async exchangeCode({ code, redirectUri, app }: { code: string; redirectUri: string; app: PlatformAppCredentials }): Promise<ConnectedAccountInfo[]> {
     const res = await httpRequest<any>(`${API}/oauth/token/`, {
       method: 'POST',
       form: {
-        client_key: this.cfg.TIKTOK_CLIENT_KEY!,
-        client_secret: this.cfg.TIKTOK_CLIENT_SECRET!,
+        client_key: app.clientId,
+        client_secret: app.clientSecret,
         code,
         grant_type: 'authorization_code',
         redirect_uri: redirectUri,
@@ -69,13 +65,13 @@ export class TikTokProvider implements SocialProvider {
     ];
   }
 
-  async refreshToken(token: TokenSet): Promise<TokenSet | null> {
+  async refreshToken(token: TokenSet, app: PlatformAppCredentials): Promise<TokenSet | null> {
     if (!token.refreshToken) return null;
     const res = await httpRequest<any>(`${API}/oauth/token/`, {
       method: 'POST',
       form: {
-        client_key: this.cfg.TIKTOK_CLIENT_KEY!,
-        client_secret: this.cfg.TIKTOK_CLIENT_SECRET!,
+        client_key: app.clientId,
+        client_secret: app.clientSecret,
         grant_type: 'refresh_token',
         refresh_token: token.refreshToken,
       },

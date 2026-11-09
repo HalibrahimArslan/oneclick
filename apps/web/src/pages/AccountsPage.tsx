@@ -2,12 +2,12 @@ import { PLATFORM_LABELS, PLATFORMS, type Platform } from '@oneclick/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Info, Loader2, Lock, MoreHorizontal, Plug, Plus, RefreshCw, Search, Unplug } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useFeedback } from '../components/feedback';
 import { AccountAvatar, PlatformIcon } from '../components/identity';
 import { Button, Card, cx, EmptyState, IconButton, MenuItem, PageHeader, Popover, Skeleton } from '../components/ui';
 import { api, ws } from '../lib/api';
-import { useAccounts, usePlatforms, type AccountRow } from '../lib/queries';
+import { useAccounts, useBrands, usePlatforms, type AccountRow } from '../lib/queries';
 
 const PLATFORM_KIND: Record<Platform, string> = {
   INSTAGRAM: 'Profesyonel hesaplar',
@@ -32,6 +32,9 @@ export function AccountsPage() {
   const [params, setParams] = useSearchParams();
   const [connecting, setConnecting] = useState<Platform | null>(null);
   const [q, setQ] = useState('');
+  const navigate = useNavigate();
+  const brands = useBrands();
+  const brandName = (id: string | null) => (id ? brands.data?.find((b) => b.id === id)?.name : undefined);
 
   // OAuth dönüşü: sonucu toast ile göster, parametreyi temizle
   useEffect(() => {
@@ -94,12 +97,12 @@ export function AccountsPage() {
                     <button
                       key={platform}
                       type="button"
-                      disabled={!configured || Boolean(connecting)}
-                      onClick={() => connect(platform)}
-                      title={configured ? `${PLATFORM_LABELS[platform]} hesabı bağla` : 'Uygulama anahtarları henüz girilmedi.'}
+                      disabled={Boolean(connecting)}
+                      onClick={() => (configured ? connect(platform) : navigate('/settings/apps'))}
+                      title={configured ? `${PLATFORM_LABELS[platform]} hesabı bağla` : 'Önce platform uygulaması bilgilerini girin'}
                       className={cx(
                         'group relative flex h-28 flex-col items-center justify-center gap-1 rounded-card border px-4 text-center transition-colors',
-                        configured ? 'border-line bg-surface hover:border-brand-200' : 'cursor-not-allowed border-line bg-canvas',
+                        configured ? 'border-line bg-surface hover:border-brand-200' : 'border-dashed border-line-strong bg-canvas hover:border-brand-200',
                         connecting && !busy && configured && 'opacity-60',
                       )}
                     >
@@ -117,7 +120,7 @@ export function AccountsPage() {
                       </span>
                       <span className={cx('mt-1.5 text-small font-semibold', !configured && 'text-muted')}>{PLATFORM_LABELS[platform]}</span>
                       <span className="text-caption text-muted">
-                        {busy ? 'Yönlendiriliyor…' : configured ? PLATFORM_KIND[platform] : <span className="rounded-full bg-subtle px-2 py-0.5 text-micro font-medium">Yapılandırılmadı</span>}
+                        {busy ? 'Yönlendiriliyor…' : configured ? PLATFORM_KIND[platform] : <span className="rounded-full bg-subtle px-2 py-0.5 text-micro font-medium group-hover:text-brand-700">Uygulama bilgisi ekle →</span>}
                       </span>
                     </button>
                   );
@@ -174,6 +177,7 @@ export function AccountsPage() {
                         <p className="truncate text-caption text-muted">
                           {a.username && `@${a.username} · `}
                           {TYPE_LABEL[a.accountType]}
+                          {brandName(a.brandId) && ` · ${brandName(a.brandId)}`}
                         </p>
                       </div>
                       <Popover align="end" className="w-52" trigger={({ toggle }) => <IconButton icon={MoreHorizontal} size="sm" label={`${a.name} işlemleri`} onClick={toggle} />}>

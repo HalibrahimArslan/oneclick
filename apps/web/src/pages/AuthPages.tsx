@@ -5,6 +5,7 @@ import { PlatformIcon } from '../components/identity';
 import { Logo } from '../components/Layout';
 import { Button, cx, Field, Input, Notice } from '../components/ui';
 import { useAuth } from '../lib/auth';
+import { useRegistrationOpen } from '../lib/queries';
 
 const PROMISES = [
   { icon: Layers, title: 'Bir kez yazın', body: 'Instagram, TikTok ve LinkedIn için tek metin, hesaba göre ince ayar.' },
@@ -23,13 +24,14 @@ const MINI = [
 
 function Shell({ title, subtitle, children, footer }: { title: string; subtitle: string; children: ReactNode; footer: ReactNode }) {
   return (
-    <div className="flex min-h-full bg-surface">
-      <div className="flex w-full flex-col px-6 py-8 sm:px-12 lg:max-w-130 lg:px-16">
-        <div className="flex items-center gap-2.5">
-          <Logo size={30} />
-          <span className="text-heading font-semibold tracking-tight">OneClick</span>
-        </div>
-        <div className="my-auto w-full max-w-sm py-12">
+    <div className="flex min-h-screen bg-surface lg:flex-row-reverse">
+      {/* Form DOM'da önce gelir (klavye sırası), görselde sağda durur */}
+      <div className="flex w-full flex-col items-center justify-center px-6 py-12 sm:px-12 lg:w-1/2">
+        <div className="w-full max-w-md">
+          <div className="mb-10 flex items-center gap-2.5">
+            <Logo size={30} />
+            <span className="text-heading font-semibold tracking-tight">OneClick</span>
+          </div>
           <h1 className="text-[26px] leading-8 font-semibold tracking-tight">{title}</h1>
           <p className="mt-1.5 mb-8 text-body text-muted">{subtitle}</p>
           {children}
@@ -37,11 +39,14 @@ function Shell({ title, subtitle, children, footer }: { title: string; subtitle:
         </div>
       </div>
 
-      <aside className="relative hidden flex-1 overflow-hidden bg-brand-600 lg:flex lg:flex-col lg:justify-center lg:px-16 xl:px-24">
+      <aside className="relative hidden overflow-hidden bg-brand-600 lg:flex lg:w-1/2 lg:flex-col lg:items-center lg:justify-center lg:px-12 lg:py-16 xl:px-20">
         <div className="absolute -top-40 -right-40 size-120 rounded-full bg-brand-500/50" aria-hidden />
         <div className="absolute -bottom-48 -left-24 size-105 rounded-full bg-brand-700/40" aria-hidden />
-        <div className="relative max-w-lg">
-          <ul className="space-y-6">
+        <div className="relative w-full max-w-xl 2xl:max-w-2xl">
+          <h2 className="mb-10 text-[32px] leading-10 font-semibold tracking-tight text-white xl:text-[36px] xl:leading-11">
+            Tüm sosyal hesaplarınız, tek takvimde.
+          </h2>
+          <ul className="grid gap-6 xl:gap-7">
             {PROMISES.map(({ icon: Icon, title: t, body }) => (
               <li key={t} className="flex gap-4">
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-card bg-white/12 text-white">
@@ -55,7 +60,7 @@ function Shell({ title, subtitle, children, footer }: { title: string; subtitle:
             ))}
           </ul>
 
-          <div className="mt-12 rounded-pop bg-surface p-4 shadow-modal" aria-hidden>
+          <div className="mt-12 rounded-pop bg-surface p-5 shadow-modal" aria-hidden>
             <div className="mb-3 flex items-center justify-between">
               <span className="text-small font-semibold text-ink">Bu hafta</span>
               <span className="flex gap-1">
@@ -66,7 +71,7 @@ function Shell({ title, subtitle, children, footer }: { title: string; subtitle:
             </div>
             <div className="grid grid-cols-5 gap-2">
               {MINI.map((col) => (
-                <div key={col.d} className="min-h-28 rounded-control bg-canvas p-1.5">
+                <div key={col.d} className="min-h-36 rounded-control bg-canvas p-2 2xl:min-h-44">
                   <p className="mb-1.5 text-micro font-medium text-muted">{col.d}</p>
                   <div className="space-y-1.5">
                     {col.items.map((it, i) => (
@@ -98,6 +103,8 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const { data: registrationOpen } = useRegistrationOpen();
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
@@ -117,12 +124,14 @@ export function LoginPage() {
       title="Tekrar hoş geldiniz"
       subtitle="Tüm sosyal hesaplarınız tek ekranda."
       footer={
-        <>
-          Hesabınız yok mu?{' '}
-          <Link to="/register" className="font-medium text-brand-700 hover:underline">
-            Kayıt olun
-          </Link>
-        </>
+        registrationOpen !== false && (
+          <>
+            Hesabınız yok mu?{' '}
+            <Link to="/register" className="font-medium text-brand-700 hover:underline">
+              Kayıt olun
+            </Link>
+          </>
+        )
       }
     >
       <form onSubmit={submit} className="space-y-4">
@@ -147,6 +156,7 @@ export function RegisterPage() {
   const [form, setForm] = useState({ name: '', email: '', password: '', workspaceName: '' });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { data: registrationOpen } = useRegistrationOpen();
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.value });
 
   const submit = async (e: FormEvent) => {
@@ -176,6 +186,9 @@ export function RegisterPage() {
         </>
       }
     >
+      {registrationOpen === false ? (
+        <Notice tone="info">Bu kurulumda yeni kayıtlar kapalı. Hesap için yöneticinizle görüşün.</Notice>
+      ) : (
       <form onSubmit={submit} className="space-y-4">
         {error && <Notice tone="error">{error}</Notice>}
         <Field label="Ad soyad">
@@ -194,6 +207,7 @@ export function RegisterPage() {
           Kayıt ol
         </Button>
       </form>
+      )}
     </Shell>
   );
 }

@@ -15,7 +15,8 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:generate": "prisma generate",
     "seed": "tsx prisma/seed.ts",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "apps:import-env": "tsx scripts/import-env-apps.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.787.0",

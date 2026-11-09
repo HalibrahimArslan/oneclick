@@ -50,13 +50,15 @@ export class AccountsController {
   ) {
     const platform = parsePlatform(platformParam);
     const provider = this.c.providers[platform];
-    if (!provider.isConfigured()) {
-      throw new BadRequestException(`${platform} için uygulama anahtarları .env dosyasında tanımlı değil`);
+    const resolved = await this.c.platformApps.resolve(m.workspaceId, platform);
+    if (!resolved) {
+      throw new BadRequestException(`${platform} için uygulama bilgileri tanımlı değil. Ayarlar → Platform uygulamaları bölümünden ekleyin.`);
     }
+    if (brandId) await this.assertBrand(m.workspaceId, brandId);
     const state = randomToken(24);
     const data: OAuthState = { workspaceId: m.workspaceId, userId: u.id, platform, brandId: brandId ?? null };
     await this.c.redis.set(`oauth:state:${state}`, JSON.stringify(data), 'EX', STATE_TTL_S);
-    return { url: provider.getAuthUrl({ state, redirectUri: oauthRedirectUri(this.c.cfg, platform) }) };
+    return { url: provider.getAuthUrl({ state, redirectUri: oauthRedirectUri(this.c.cfg, platform), app: resolved.app }) };
   }
 
   /** TikTok composer kuralları için creator_info (takma ad, izinli görünürlükler). */
@@ -87,7 +89,13 @@ export class AccountsController {
   ) {
     const account = await this.c.prisma.socialAccount.findFirst({ where: { id, workspaceId: wid } });
     if (!account) throw new NotFoundException();
+    if (body.brandId) await this.assertBrand(wid, body.brandId);
     return toAccountDto(await this.c.prisma.socialAccount.update({ where: { id }, data: { brandId: body.brandId } }));
+  }
+
+  private async assertBrand(wid: string, brandId: string) {
+    const brand = await this.c.prisma.brand.findFirst({ where: { id: brandId, workspaceId: wid } });
+    if (!brand) throw new BadRequestException('Müşteri bulunamadı');
   }
 
   /** Hesabı koparır: token'lar silinir, geçmiş gönderiler korunur. */
@@ -133,7 +141,9 @@ export class OAuthController {
 
     try {
       const provider = this.c.providers[platform];
-      const infos = await provider.exchangeCode({ code: q.code, redirectUri: oauthRedirectUri(this.c.cfg, platform) });
+      const resolved = await this.c.platformApps.resolve(state.workspaceId, platform);
+      if (!resolved) return back({ error: 'Uygulama bilgileri bağlantı sırasında kaldırılmış' });
+      const infos = await provider.exchangeCode({ code: q.code, redirectUri: oauthRedirectUri(this.c.cfg, platform), app: resolved.app });
       for (const info of infos) {
         const account = await this.c.prisma.socialAccount.upsert({
           where: {

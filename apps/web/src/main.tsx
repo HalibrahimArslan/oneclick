@@ -10,6 +10,8 @@ import { AuthProvider, useAuth } from './lib/auth';
 import { AccountsPage } from './pages/AccountsPage';
 import { LoginPage, RegisterPage } from './pages/AuthPages';
 import { CalendarPage } from './pages/CalendarPage';
+import { ClientsPage } from './pages/ClientsPage';
+import { PlatformAppsPage } from './pages/PlatformAppsPage';
 import { ComposerPage } from './pages/ComposerPage';
 import { MediaPage } from './pages/MediaPage';
 import { PostsPage } from './pages/PostsPage';
@@ -51,6 +53,8 @@ function App() {
         <Route path="/posts" element={<PostsPage />} />
         <Route path="/media" element={<MediaPage />} />
         <Route path="/accounts" element={<AccountsPage />} />
+        <Route path="/clients" element={<ClientsPage />} />
+        <Route path="/settings/apps" element={<PlatformAppsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/calendar" replace />} />
     </Routes>

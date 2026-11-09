@@ -2,6 +2,7 @@ import type { OAuthCredential, PrismaClient, SocialAccount } from '@prisma/clien
 import { ProviderError } from '../lib/http';
 import type { TokenCipher } from '../lib/crypto';
 import type { ProviderRegistry, TokenSet } from '../providers';
+import type { PlatformAppService } from './platform-apps';
 
 /** Token'ları şifreli saklar, gerektiğinde yeniler. */
 export class CredentialService {
@@ -9,6 +10,7 @@ export class CredentialService {
     private readonly prisma: PrismaClient,
     private readonly cipher: TokenCipher,
     private readonly providers: ProviderRegistry,
+    private readonly platformApps: PlatformAppService,
   ) {}
 
   async save(socialAccountId: string, token: TokenSet) {
@@ -58,9 +60,11 @@ export class CredentialService {
       token = this.decode(cred);
     }
     const provider = this.providers[account.platform];
+    const resolved = await this.platformApps.resolve(account.workspaceId, account.platform);
     let next: TokenSet | null;
     try {
-      next = await provider.refreshToken(token);
+      // Uygulama bilgisi kaldırılmışsa yenileme yapılamaz; mevcut token süresi dolana dek kullanılır
+      next = resolved ? await provider.refreshToken(token, resolved.app) : null;
     } catch (err) {
       if (err instanceof ProviderError && err.retryable) throw err;
       throw await this.markReauth(account, `Token yenilenemedi: ${(err as Error).message}`);

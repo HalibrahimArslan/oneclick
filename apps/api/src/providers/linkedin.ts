@@ -1,6 +1,6 @@
 import type { AppConfig } from '../config';
 import { httpRequest, ProviderError, sleep } from '../lib/http';
-import { secondsFromNow, type ConnectedAccountInfo, type PublishInput, type PublishMedia, type PublishResult, type SocialProvider, type TokenSet } from './types';
+import { secondsFromNow, type ConnectedAccountInfo, type PlatformAppCredentials, type PublishInput, type PublishMedia, type PublishResult, type SocialProvider, type TokenSet } from './types';
 
 const REST = 'https://api.linkedin.com/rest';
 
@@ -14,10 +14,6 @@ export class LinkedInProvider implements SocialProvider {
 
   constructor(private readonly cfg: AppConfig) {}
 
-  isConfigured() {
-    return Boolean(this.cfg.LINKEDIN_CLIENT_ID && this.cfg.LINKEDIN_CLIENT_SECRET);
-  }
-
   private headers(at: string) {
     return {
       authorization: `Bearer ${at}`,
@@ -26,29 +22,29 @@ export class LinkedInProvider implements SocialProvider {
     };
   }
 
-  getAuthUrl({ state, redirectUri }: { state: string; redirectUri: string }) {
+  getAuthUrl({ state, redirectUri, app }: { state: string; redirectUri: string; app: PlatformAppCredentials }) {
     const scopes = ['openid', 'profile', 'w_member_social'];
-    if (this.cfg.LINKEDIN_ORGANIZATIONS_ENABLED) {
+    if (app.options.organizationsEnabled) {
       scopes.push('w_organization_social', 'r_organization_social', 'rw_organization_admin');
     }
     const u = new URL('https://www.linkedin.com/oauth/v2/authorization');
     u.searchParams.set('response_type', 'code');
-    u.searchParams.set('client_id', this.cfg.LINKEDIN_CLIENT_ID!);
+    u.searchParams.set('client_id', app.clientId);
     u.searchParams.set('redirect_uri', redirectUri);
     u.searchParams.set('state', state);
     u.searchParams.set('scope', scopes.join(' '));
     return u.toString();
   }
 
-  async exchangeCode({ code, redirectUri }: { code: string; redirectUri: string }): Promise<ConnectedAccountInfo[]> {
+  async exchangeCode({ code, redirectUri, app }: { code: string; redirectUri: string; app: PlatformAppCredentials }): Promise<ConnectedAccountInfo[]> {
     const res = await httpRequest<any>('https://www.linkedin.com/oauth/v2/accessToken', {
       method: 'POST',
       form: {
         grant_type: 'authorization_code',
         code,
         redirect_uri: redirectUri,
-        client_id: this.cfg.LINKEDIN_CLIENT_ID!,
-        client_secret: this.cfg.LINKEDIN_CLIENT_SECRET!,
+        client_id: app.clientId,
+        client_secret: app.clientSecret,
       },
     });
     const token: TokenSet = {
@@ -74,7 +70,7 @@ export class LinkedInProvider implements SocialProvider {
       },
     ];
 
-    if (this.cfg.LINKEDIN_ORGANIZATIONS_ENABLED) {
+    if (app.options.organizationsEnabled) {
       const orgIds = new Set<string>();
       for (const role of ['ADMINISTRATOR', 'CONTENT_ADMINISTRATOR']) {
         try {
@@ -114,7 +110,7 @@ export class LinkedInProvider implements SocialProvider {
     return accounts;
   }
 
-  async refreshToken(token: TokenSet): Promise<TokenSet | null> {
+  async refreshToken(token: TokenSet, app: PlatformAppCredentials): Promise<TokenSet | null> {
     // Programatik yenileme yalnızca LinkedIn'in onayladığı ortaklara açık
     if (!token.refreshToken) return null;
     const res = await httpRequest<any>('https://www.linkedin.com/oauth/v2/accessToken', {
@@ -122,8 +118,8 @@ export class LinkedInProvider implements SocialProvider {
       form: {
         grant_type: 'refresh_token',
         refresh_token: token.refreshToken,
-        client_id: this.cfg.LINKEDIN_CLIENT_ID!,
-        client_secret: this.cfg.LINKEDIN_CLIENT_SECRET!,
+        client_id: app.clientId,
+        client_secret: app.clientSecret,
       },
     });
     return {

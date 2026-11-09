@@ -16,8 +16,22 @@ export const loginSchema = z.object({
 export type LoginInput = z.infer<typeof loginSchema>;
 
 export const createBrandSchema = z.object({
-  name: z.string().trim().min(1).max(80),
+  name: z.string().trim().min(1, 'Müşteri adı gerekli').max(80),
 });
+export const updateBrandSchema = createBrandSchema;
+
+/** Çalışma alanının kendi platform uygulaması. Güncellemede secret boş bırakılırsa eskisi korunur. */
+export const savePlatformAppSchema = z.object({
+  clientId: z.string().trim().min(1, 'App ID / Client ID gerekli').max(200),
+  clientSecret: z.string().trim().max(500).optional(),
+  options: z
+    .object({
+      /** LinkedIn: Community Management API onayı varsa şirket sayfaları da bağlanır */
+      organizationsEnabled: z.boolean().optional(),
+    })
+    .default({}),
+});
+export type SavePlatformAppInput = z.infer<typeof savePlatformAppSchema>;
 
 export const instagramOptionsSchema = z.object({
   postType: z.enum(INSTAGRAM_POST_TYPES).default('FEED'),

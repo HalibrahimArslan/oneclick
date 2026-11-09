@@ -1,4 +1,4 @@
-import { Body, ConflictException, Controller, Get, HttpCode, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
+import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
 import { hash, verify } from '@node-rs/argon2';
 import { loginSchema, registerSchema, type LoginInput, type RegisterInput } from '@oneclick/shared';
 import type { Request, Response } from 'express';
@@ -15,9 +15,22 @@ const REFRESH_TTL_MS = 30 * 864e5;
 export class AuthController {
   constructor(@InjectContainer() private readonly c: Container) {}
 
+  /** Giriş ekranı için: kayıt açık mı (ilk kullanıcı her zaman kayıt olabilir) */
+  @Public()
+  @Get('config')
+  async config() {
+    return { registrationOpen: await this.registrationOpen() };
+  }
+
+  private async registrationOpen() {
+    if (this.c.cfg.ALLOW_REGISTRATION) return true;
+    return (await this.c.prisma.user.count()) === 0;
+  }
+
   @Public()
   @Post('register')
   async register(@Body(new ZodPipe(registerSchema)) body: RegisterInput, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    if (!(await this.registrationOpen())) throw new ForbiddenException('Yeni kayıtlar kapalı. Hesap için yöneticinizle görüşün.');
     const exists = await this.c.prisma.user.findUnique({ where: { email: body.email } });
     if (exists) throw new ConflictException('Bu e-posta ile kayıtlı bir hesap var');
 

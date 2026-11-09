@@ -12,10 +12,6 @@ export class MockProvider implements SocialProvider {
 
   constructor(private readonly cfg: AppConfig) {}
 
-  isConfigured() {
-    return this.cfg.ENABLE_MOCK_PROVIDER;
-  }
-
   getAuthUrl({ state, redirectUri }: { state: string; redirectUri: string }) {
     const u = new URL(`${this.cfg.API_PUBLIC_URL}/v1/oauth/mock-authorize`);
     u.searchParams.set('state', state);

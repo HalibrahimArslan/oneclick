@@ -41,6 +41,27 @@ export interface SocialAccountDto {
   createdAt: string;
 }
 
+export interface BrandDto {
+  id: string;
+  name: string;
+  logoUrl: string | null;
+  accountCount: number;
+  createdAt: string;
+}
+
+export interface PlatformAppDto {
+  platform: Platform;
+  /** workspace: panelden kaydedildi · env: sunucu .env dosyasından · null: tanımsız */
+  source: 'workspace' | 'env' | null;
+  clientId: string | null;
+  /** Secret'ın son 4 karakteri (yalnızca kontrol için) */
+  secretHint: string | null;
+  options: { organizationsEnabled?: boolean };
+  /** Geliştirici uygulamasına girilmesi gereken OAuth yönlendirme adresi */
+  redirectUri: string;
+  updatedAt: string | null;
+}
+
 export interface MediaAssetDto {
   id: string;
   fileName: string;

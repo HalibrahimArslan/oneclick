@@ -1,4 +1,4 @@
-import type { MediaAssetDto, Platform, PostDto, SocialAccountDto } from '@oneclick/shared';
+import type { BrandDto, MediaAssetDto, Platform, PlatformAppDto, PostDto, SocialAccountDto } from '@oneclick/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ws } from './api';
 import { useAuth } from './auth';
@@ -18,6 +18,26 @@ export function usePlatforms() {
     queryKey: ['platforms', w],
     queryFn: () => api<{ platform: Platform; configured: boolean }[]>(ws('/platforms')),
     staleTime: 5 * 60_000,
+  });
+}
+
+export function useBrands() {
+  const w = useWsKey();
+  return useQuery({ queryKey: ['brands', w], queryFn: () => api<BrandDto[]>(ws('/brands')) });
+}
+
+export function usePlatformApps() {
+  const w = useWsKey();
+  return useQuery({ queryKey: ['platform-apps', w], queryFn: () => api<PlatformAppDto[]>(ws('/platform-apps')) });
+}
+
+/** Giriş ekranı için: yeni kayıt açık mı */
+export function useRegistrationOpen() {
+  return useQuery({
+    queryKey: ['auth-config'],
+    queryFn: () => api<{ registrationOpen: boolean }>('/auth/config'),
+    staleTime: 5 * 60_000,
+    select: (d) => d.registrationOpen,
   });
 }
 

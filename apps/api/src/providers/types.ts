@@ -55,14 +55,19 @@ export interface PublishResult {
   raw?: unknown;
 }
 
+/** Çalışma alanının platformdaki geliştirici uygulaması (panelden veya .env'den). */
+export interface PlatformAppCredentials {
+  clientId: string;
+  clientSecret: string;
+  options: { organizationsEnabled?: boolean };
+}
+
 export interface SocialProvider {
   readonly platform: Platform;
-  /** .env içinde gerekli anahtarlar tanımlı mı */
-  isConfigured(): boolean;
-  getAuthUrl(params: { state: string; redirectUri: string }): string;
-  exchangeCode(params: { code: string; redirectUri: string }): Promise<ConnectedAccountInfo[]>;
+  getAuthUrl(params: { state: string; redirectUri: string; app: PlatformAppCredentials }): string;
+  exchangeCode(params: { code: string; redirectUri: string; app: PlatformAppCredentials }): Promise<ConnectedAccountInfo[]>;
   /** Yenileme desteklenmiyorsa null döner */
-  refreshToken(token: TokenSet): Promise<TokenSet | null>;
+  refreshToken(token: TokenSet, app: PlatformAppCredentials): Promise<TokenSet | null>;
   publish(input: PublishInput): Promise<PublishResult>;
   /** Yayın öncesi platformdan dinamik bilgi (ör. TikTok creator_info) */
   getAccountCapabilities?(input: { accessToken: string; account: PublishInput['account'] }): Promise<Record<string, unknown>>;

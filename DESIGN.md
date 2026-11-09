@@ -405,8 +405,8 @@ Agorapulse'un hesap ekleme ekranı örnek alınır.
 
 ### 5.7 Giriş ve kayıt (`/login`, `/register`)
 
-- İki bölme. Sol bölme (en fazla 520 px, `surface`): logo, `title` başlık, tek satır açıklama, form (`lg` girdiler ve düğme) ve alt bağlantı.
-- Sağ bölme (`brand-600` zemin, 1024 px altında gizlenir): üç kısa vaat satırı ("Bir kez yazın, her yerde yayınlayın" vb.) ve altında beyaz kartlardan oluşan küçük bir takvim önizlemesi (CSS ile çizilir, görsel dosyası değil).
+- İki bölme. İki eşit bölme (1024 px üstünde %50/%50). Sağ bölme (`surface`): yatay ve dikey ortalı, en fazla 448 px genişliğinde bir sütun; içinde sırasıyla logo, `title` başlık, tek satır açıklama, form (`lg` girdiler ve düğme) ve alt bağlantı.
+- Sol bölme (`brand-600` zemin, 1024 px altında gizlenir; içerik yatay ve dikey ortalı, en fazla 576 px, 2xl'de 672 px): kısa bir başlık, üç kısa vaat satırı ("Bir kez yazın, her yerde yayınlayın" vb.) ve altında beyaz kartlardan oluşan küçük bir takvim önizlemesi (CSS ile çizilir, görsel dosyası değil).
 - Hata mesajı formun üstünde Notice olarak gösterilir.
 
 ---
