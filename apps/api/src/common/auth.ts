@@ -24,6 +24,8 @@ export interface AuthUser {
 export interface Membership {
   workspaceId: string;
   role: Role;
+  /** Geçici demo çalışma alanı mı */
+  isDemo: boolean;
 }
 
 type AuthedRequest = Request & { user?: AuthUser; member?: Membership };
@@ -43,6 +45,10 @@ export const IS_PUBLIC = 'isPublic';
 export const Public = () => SetMetadata(IS_PUBLIC, true);
 
 const ROLE_RANK: Record<Role, number> = { OWNER: 5, ADMIN: 4, EDITOR: 3, APPROVER: 2, VIEWER: 1 };
+export const NO_DEMO = 'noDemo';
+/** Demo çalışma alanlarında kapalı uç noktalar (gerçek hesap bağlama, uygulama bilgileri vb.) */
+export const NoDemo = () => SetMetadata(NO_DEMO, true);
+
 export const MIN_ROLE = 'minRole';
 /** Bu uç nokta için gereken en düşük workspace rolü */
 export const MinRole = (role: Role) => SetMetadata(MIN_ROLE, role);
@@ -78,9 +84,14 @@ export class AuthGuard implements CanActivate {
     if (wid) {
       const m = await this.c.prisma.workspaceMember.findUnique({
         where: { workspaceId_userId: { workspaceId: wid, userId: req.user.id } },
+        include: { workspace: { select: { demoExpiresAt: true } } },
       });
       if (!m) throw new NotFoundException('Çalışma alanı bulunamadı');
-      req.member = { workspaceId: wid, role: m.role };
+      const isDemo = Boolean(m.workspace.demoExpiresAt);
+      req.member = { workspaceId: wid, role: m.role, isDemo };
+      if (isDemo && this.reflector.getAllAndOverride<boolean>(NO_DEMO, [ctx.getHandler(), ctx.getClass()])) {
+        throw new ForbiddenException('Bu işlem demo hesabında kapalı. Kendi kurulumunuzda kullanılabilir.');
+      }
       const minRole = this.reflector.getAllAndOverride<Role>(MIN_ROLE, [ctx.getHandler(), ctx.getClass()]) ?? 'VIEWER';
       if (ROLE_RANK[m.role] < ROLE_RANK[minRole]) throw new ForbiddenException('Bu işlem için yetkiniz yok');
     }

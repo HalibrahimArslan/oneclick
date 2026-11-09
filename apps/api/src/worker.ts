@@ -19,12 +19,18 @@ async function main() {
   // Bakım işleri
   await c.queues.maintenance.upsertJobScheduler('token-refresh', { every: 60 * 60_000 }, { name: 'token-refresh' });
   await c.queues.maintenance.upsertJobScheduler('sweeper', { every: 60_000 }, { name: 'sweeper' });
+  await c.queues.maintenance.upsertJobScheduler('demo-cleanup', { every: 15 * 60_000 }, { name: 'demo-cleanup' });
 
   const maintenanceWorker = new Worker(
     MAINTENANCE_QUEUE,
     async (job) => {
       if (job.name === 'token-refresh') return refreshExpiringTokens();
       if (job.name === 'sweeper') return sweepLostJobs();
+      if (job.name === 'demo-cleanup') {
+        const r = await c.demo.cleanup();
+        if (r.workspaces || r.users) log(`demo temizliği: ${r.workspaces} çalışma alanı, ${r.users} kullanıcı silindi`);
+        return r;
+      }
     },
     { connection: c.redis, concurrency: 1 },
   );

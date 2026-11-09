@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, Patch, Post, Put } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, NotFoundException, Param, Patch, Post, Put } from '@nestjs/common';
 import {
   createBrandSchema,
   inviteMemberSchema,
@@ -9,7 +9,7 @@ import {
   type SavePlatformAppInput,
 } from '@oneclick/shared';
 import { z } from 'zod';
-import { CurrentUser, MinRole, type AuthUser } from '../common/auth';
+import { CurrentUser, MinRole, NoDemo, type AuthUser } from '../common/auth';
 import { InjectContainer } from '../common/core';
 import { ZodPipe } from '../common/zod.pipe';
 import type { Container } from '../core/container';
@@ -23,6 +23,8 @@ export class WorkspacesController {
 
   @Post()
   async create(@CurrentUser() u: AuthUser, @Body(new ZodPipe(renameSchema)) body: { name: string }) {
+    const user = await this.c.prisma.user.findUnique({ where: { id: u.id }, select: { isDemo: true } });
+    if (user?.isDemo) throw new ForbiddenException('Demo hesabında yeni çalışma alanı açılamaz.');
     const ws = await this.c.prisma.workspace.create({
       data: { name: body.name, members: { create: { userId: u.id, role: 'OWNER' } } },
     });
@@ -52,6 +54,7 @@ export class WorkspacesController {
 
   @Put(':wid/platform-apps/:platform')
   @MinRole('ADMIN')
+  @NoDemo()
   async savePlatformApp(
     @Param('wid') wid: string,
     @Param('platform') platformParam: string,
@@ -71,6 +74,7 @@ export class WorkspacesController {
 
   @Delete(':wid/platform-apps/:platform')
   @MinRole('ADMIN')
+  @NoDemo()
   @HttpCode(204)
   async removePlatformApp(@Param('wid') wid: string, @Param('platform') platformParam: string, @CurrentUser() u: AuthUser) {
     const platform = this.parseRealPlatform(platformParam);
@@ -133,6 +137,7 @@ export class WorkspacesController {
   /** Şimdilik yalnızca kayıtlı kullanıcıları ekler; e-posta daveti Faz 2'de. */
   @Post(':wid/members')
   @MinRole('ADMIN')
+  @NoDemo()
   async addMember(@Param('wid') wid: string, @Body(new ZodPipe(inviteMemberSchema)) body: z.infer<typeof inviteMemberSchema>) {
     const user = await this.c.prisma.user.findUnique({ where: { email: body.email } });
     if (!user) throw new NotFoundException('Bu e-postayla kayıtlı kullanıcı yok; önce kayıt olmalı');

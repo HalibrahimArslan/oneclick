@@ -59,7 +59,12 @@ export function PlatformAppsPage() {
         subtitle="Hesaplar, sizin oluşturduğunuz geliştirici uygulamaları üzerinden bağlanır. Bilgileriniz şifrelenerek saklanır."
       />
 
-      {!canEdit ? (
+      {workspace?.demoExpiresAt ? (
+        <Notice tone="info">
+          Demo hesabında platform uygulaması eklenemez. Kendi kurulumunuzda burada Meta, LinkedIn ve TikTok geliştirici uygulamanızın bilgilerini girer,
+          hesaplarınızı doğrudan kendi uygulamanız üzerinden bağlarsınız.
+        </Notice>
+      ) : !canEdit ? (
         <Notice tone="info">Platform uygulamalarını yalnızca çalışma alanı sahibi veya yöneticisi görebilir ve düzenleyebilir.</Notice>
       ) : apps.isError ? (
         <Notice tone="error">{(apps.error as Error).message}</Notice>

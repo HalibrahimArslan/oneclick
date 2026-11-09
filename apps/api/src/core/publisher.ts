@@ -44,7 +44,9 @@ export class PublishProcessor {
       if (account.status === 'DISCONNECTED') {
         throw new ProviderError('Hesap bağlantısı kaldırılmış', { retryable: false, code: 'disconnected' });
       }
-      const provider = this.providers[account.platform];
+      // Demo hesapları gerçek platforma gitmez; Mock sağlayıcı yayınlar
+      const isDemo = (account.metadata as Record<string, unknown> | null)?.demo === true;
+      const provider = isDemo ? this.providers.MOCK : this.providers[account.platform];
       const text = target.textOverride ?? target.post.text;
       const options = (target.options as Record<string, any>) ?? {};
       const media: PublishMedia[] = target.post.media.map(({ media: m }) => ({

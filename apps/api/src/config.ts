@@ -8,6 +8,8 @@ const bool = z
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(4000),
+  // API bir ters vekil (Caddy, nginx) arkasındaysa true
+  TRUST_PROXY: bool,
   WEB_URL: z.string().url().default('http://localhost:5173'),
   API_PUBLIC_URL: z.string().url().default('http://localhost:4000'),
   DATABASE_URL: z.string().min(1),
@@ -35,6 +37,11 @@ const envSchema = z.object({
   // true: panelde uygulama bilgisi girmemiş çalışma alanları aşağıdaki .env anahtarlarını kullanır.
   // Kaydı herkese açık bir sunucuda false tutun; aksi halde herkes sizin uygulamanız üzerinden bağlanır.
   PLATFORM_APPS_FROM_ENV: bool,
+
+  // Giriş ekranında "Demoyu dene": her ziyaretçiye örnek verili, geçici bir çalışma alanı açar.
+  // Demo hesapları gerçek platformlara yayın yapmaz.
+  DEMO_MODE: bool,
+  DEMO_TTL_HOURS: z.coerce.number().min(1).max(24 * 7).default(24),
 
   INSTAGRAM_APP_ID: z.string().optional(),
   INSTAGRAM_APP_SECRET: z.string().optional(),

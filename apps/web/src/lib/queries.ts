@@ -31,13 +31,12 @@ export function usePlatformApps() {
   return useQuery({ queryKey: ['platform-apps', w], queryFn: () => api<PlatformAppDto[]>(ws('/platform-apps')) });
 }
 
-/** Giriş ekranı için: yeni kayıt açık mı */
-export function useRegistrationOpen() {
+/** Giriş ekranı için: kayıt açık mı, demo modu var mı */
+export function useAuthConfig() {
   return useQuery({
     queryKey: ['auth-config'],
-    queryFn: () => api<{ registrationOpen: boolean }>('/auth/config'),
+    queryFn: () => api<{ registrationOpen: boolean; demoMode: boolean; demoTtlHours: number }>('/auth/config'),
     staleTime: 5 * 60_000,
-    select: (d) => d.registrationOpen,
   });
 }
 

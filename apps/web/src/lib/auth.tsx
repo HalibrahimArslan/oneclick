@@ -11,6 +11,8 @@ interface AuthState {
   selectWorkspace(id: string): void;
   login(email: string, password: string): Promise<void>;
   register(input: { name: string; email: string; password: string; workspaceName?: string }): Promise<void>;
+  /** Örnek verili geçici demo çalışma alanı açar */
+  startDemo(): Promise<void>;
   logout(): Promise<void>;
   reload(): Promise<void>;
 }
@@ -89,6 +91,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       async register(input) {
         const r = await api<{ accessToken: string }>('/auth/register', { body: input });
+        setAccessToken(r.accessToken);
+        await loadMe();
+      },
+      async startDemo() {
+        const r = await api<{ accessToken: string }>('/auth/demo', { method: 'POST' });
         setAccessToken(r.accessToken);
         await loadMe();
       },

@@ -27,6 +27,8 @@ export interface WorkspaceDto {
   id: string;
   name: string;
   role: Role;
+  /** Doluysa geçici demo çalışma alanı; bu zamanda silinir */
+  demoExpiresAt?: string | null;
 }
 
 export interface SocialAccountDto {

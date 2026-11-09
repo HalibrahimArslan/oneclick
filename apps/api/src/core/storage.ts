@@ -1,6 +1,6 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { createReadStream } from 'node:fs';
-import { mkdir, readFile, rename, stat } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, stat } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import type { AppConfig } from '../config';
 
@@ -8,6 +8,7 @@ export interface Storage {
   /** Geçici dosyayı kalıcı konuma taşır/yükler */
   putFile(localPath: string, key: string, mime: string): Promise<void>;
   read(key: string): Promise<Buffer>;
+  remove(key: string): Promise<void>;
   publicUrl(key: string): string;
 }
 
@@ -30,6 +31,10 @@ class LocalStorage implements Storage {
 
   read(key: string) {
     return readFile(this.path(key));
+  }
+
+  async remove(key: string) {
+    await rm(this.path(key), { force: true });
   }
 
   publicUrl(key: string) {
@@ -69,6 +74,10 @@ class S3Storage implements Storage {
     const res = await this.client.send(new GetObjectCommand({ Bucket: this.cfg.S3_BUCKET, Key: key }));
     const bytes = await res.Body!.transformToByteArray();
     return Buffer.from(bytes);
+  }
+
+  async remove(key: string) {
+    await this.client.send(new DeleteObjectCommand({ Bucket: this.cfg.S3_BUCKET, Key: key }));
   }
 
   publicUrl(key: string) {

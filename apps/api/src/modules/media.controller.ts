@@ -20,10 +20,11 @@ import { extname } from 'node:path';
 import { promisify } from 'node:util';
 import { imageSize } from 'image-size';
 import { diskStorage } from 'multer';
-import { CurrentUser, MinRole, type AuthUser } from '../common/auth';
+import { CurrentMember, CurrentUser, MinRole, type AuthUser, type Membership } from '../common/auth';
 import { InjectContainer } from '../common/core';
 import { toMediaDto } from '../common/serializers';
 import type { Container } from '../core/container';
+import { DEMO_MAX_FILE_BYTES, DEMO_MAX_FILES } from '../core/demo';
 import { tmpUploadDir } from '../core/storage';
 
 const execFileAsync = promisify(execFile);
@@ -58,9 +59,19 @@ export class MediaController {
       },
     }),
   )
-  async upload(@Param('wid') wid: string, @CurrentUser() u: AuthUser, @UploadedFile() file?: Express.Multer.File) {
+  async upload(
+    @Param('wid') wid: string,
+    @CurrentUser() u: AuthUser,
+    @CurrentMember() m: Membership,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
     if (!file) throw new BadRequestException('Dosya bulunamadı');
     try {
+      if (m.isDemo) {
+        if (file.size > DEMO_MAX_FILE_BYTES) throw new BadRequestException('Demo hesabında dosya en fazla 15 MB olabilir.');
+        const count = await this.c.prisma.mediaAsset.count({ where: { workspaceId: wid } });
+        if (count >= DEMO_MAX_FILES) throw new BadRequestException(`Demo hesabında en fazla ${DEMO_MAX_FILES} dosya yüklenebilir.`);
+      }
       const meta = await probe(file.path, file.mimetype);
       const id = randomUUID();
       const ext = (extname(file.originalname) || mimeExt(file.mimetype)).toLowerCase();

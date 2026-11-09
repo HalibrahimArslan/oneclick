@@ -2,6 +2,7 @@ import {
   CalendarDays,
   Check,
   ChevronsUpDown,
+  FlaskConical,
   Image,
   KeyRound,
   LayoutList,
@@ -97,8 +98,25 @@ export function Layout() {
       )}
 
       <main className="min-w-0 flex-1 px-4 pt-20 pb-10 md:px-8 md:pt-7">
+        <DemoBanner />
         <Outlet />
       </main>
+    </div>
+  );
+}
+
+/** Demo çalışma alanında kalıcı bilgi şeridi */
+function DemoBanner() {
+  const { workspace } = useAuth();
+  if (!workspace?.demoExpiresAt) return null;
+  const hours = Math.max(0, Math.ceil((new Date(workspace.demoExpiresAt).getTime() - Date.now()) / 3600_000));
+  return (
+    <div className="mx-auto mb-5 flex max-w-300 flex-wrap items-center gap-x-2 gap-y-1 rounded-control border border-brand-200 bg-brand-50 px-3.5 py-2.5 text-small text-brand-700">
+      <FlaskConical className="size-4 shrink-0" strokeWidth={1.75} />
+      <span className="font-semibold">Demo hesabındasınız.</span>
+      <span className="text-ink-2">
+        Hesaplar ve gönderiler örnektir; yayınlar gerçek platformlara gitmez. Bu çalışma alanı {hours > 1 ? `yaklaşık ${hours} saat` : '1 saatten kısa süre'} sonra silinir.
+      </span>
     </div>
   );
 }

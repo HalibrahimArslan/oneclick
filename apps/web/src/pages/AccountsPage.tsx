@@ -7,6 +7,7 @@ import { useFeedback } from '../components/feedback';
 import { AccountAvatar, PlatformIcon } from '../components/identity';
 import { Button, Card, cx, EmptyState, IconButton, MenuItem, PageHeader, Popover, Skeleton } from '../components/ui';
 import { api, ws } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { useAccounts, useBrands, usePlatforms, type AccountRow } from '../lib/queries';
 
 const PLATFORM_KIND: Record<Platform, string> = {
@@ -34,6 +35,7 @@ export function AccountsPage() {
   const [q, setQ] = useState('');
   const navigate = useNavigate();
   const brands = useBrands();
+  const isDemo = Boolean(useAuth().workspace?.demoExpiresAt);
   const brandName = (id: string | null) => (id ? brands.data?.find((b) => b.id === id)?.name : undefined);
 
   // OAuth dönüşü: sonucu toast ile göster, parametreyi temizle
@@ -97,12 +99,22 @@ export function AccountsPage() {
                     <button
                       key={platform}
                       type="button"
-                      disabled={Boolean(connecting)}
+                      disabled={Boolean(connecting) || isDemo}
                       onClick={() => (configured ? connect(platform) : navigate('/settings/apps'))}
-                      title={configured ? `${PLATFORM_LABELS[platform]} hesabı bağla` : 'Önce platform uygulaması bilgilerini girin'}
+                      title={
+                        isDemo
+                          ? 'Demo hesabında gerçek hesap bağlanamaz'
+                          : configured
+                            ? `${PLATFORM_LABELS[platform]} hesabı bağla`
+                            : 'Önce platform uygulaması bilgilerini girin'
+                      }
                       className={cx(
                         'group relative flex h-28 flex-col items-center justify-center gap-1 rounded-card border px-4 text-center transition-colors',
-                        configured ? 'border-line bg-surface hover:border-brand-200' : 'border-dashed border-line-strong bg-canvas hover:border-brand-200',
+                        isDemo
+                          ? 'cursor-not-allowed border-line bg-canvas opacity-60'
+                          : configured
+                            ? 'border-line bg-surface hover:border-brand-200'
+                            : 'border-dashed border-line-strong bg-canvas hover:border-brand-200',
                         connecting && !busy && configured && 'opacity-60',
                       )}
                     >
@@ -120,7 +132,7 @@ export function AccountsPage() {
                       </span>
                       <span className={cx('mt-1.5 text-small font-semibold', !configured && 'text-muted')}>{PLATFORM_LABELS[platform]}</span>
                       <span className="text-caption text-muted">
-                        {busy ? 'Yönlendiriliyor…' : configured ? PLATFORM_KIND[platform] : <span className="rounded-full bg-subtle px-2 py-0.5 text-micro font-medium group-hover:text-brand-700">Uygulama bilgisi ekle →</span>}
+                        {isDemo ? 'Demoda kapalı' : busy ? 'Yönlendiriliyor…' : configured ? PLATFORM_KIND[platform] : <span className="rounded-full bg-subtle px-2 py-0.5 text-micro font-medium group-hover:text-brand-700">Uygulama bilgisi ekle →</span>}
                       </span>
                     </button>
                   );
@@ -185,6 +197,7 @@ export function AccountsPage() {
                           <div role="menu">
                             <MenuItem
                               icon={RefreshCw}
+                              disabled={isDemo}
                               onClick={() => {
                                 close();
                                 connect(a.platform);

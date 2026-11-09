@@ -1,4 +1,4 @@
-import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
+import { Body, ConflictException, Controller, ForbiddenException, Get, HttpException, HttpStatus, NotFoundException, HttpCode, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
 import { hash, verify } from '@node-rs/argon2';
 import { loginSchema, registerSchema, type LoginInput, type RegisterInput } from '@oneclick/shared';
 import type { Request, Response } from 'express';
@@ -19,7 +19,21 @@ export class AuthController {
   @Public()
   @Get('config')
   async config() {
-    return { registrationOpen: await this.registrationOpen() };
+    return { registrationOpen: await this.registrationOpen(), demoMode: this.c.cfg.DEMO_MODE, demoTtlHours: this.c.cfg.DEMO_TTL_HOURS };
+  }
+
+  /** "Demoyu dene": örnek verili geçici çalışma alanı açar ve oturum başlatır. */
+  @Public()
+  @Post('demo')
+  async demo(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    if (!this.c.cfg.DEMO_MODE) throw new NotFoundException();
+    // Aynı adresten saatte en fazla 10 demo
+    const key = `demo:ip:${req.ip ?? 'unknown'}`;
+    const n = await this.c.redis.incr(key);
+    if (n === 1) await this.c.redis.expire(key, 3600);
+    if (n > 10) throw new HttpException('Çok fazla demo isteği. Lütfen biraz sonra tekrar deneyin.', HttpStatus.TOO_MANY_REQUESTS);
+    const { user } = await this.c.demo.create();
+    return this.issue(user, req, res);
   }
 
   private async registrationOpen() {
@@ -94,7 +108,12 @@ export class AuthController {
     });
     return {
       user: { id: user.id, email: user.email, name: user.name },
-      workspaces: user.memberships.map((m) => ({ id: m.workspace.id, name: m.workspace.name, role: m.role })),
+      workspaces: user.memberships.map((m) => ({
+        id: m.workspace.id,
+        name: m.workspace.name,
+        role: m.role,
+        demoExpiresAt: m.workspace.demoExpiresAt?.toISOString() ?? null,
+      })),
     };
   }
 

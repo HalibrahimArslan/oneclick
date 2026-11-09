@@ -3,6 +3,7 @@ import { TokenCipher } from '../lib/crypto';
 import { getPrisma } from '../lib/prisma';
 import { createProviders } from '../providers';
 import { CredentialService } from './credentials';
+import { DemoService } from './demo';
 import { PlatformAppService } from './platform-apps';
 import { PublishProcessor } from './publisher';
 import { createQueues, createRedis } from './queues';
@@ -21,7 +22,8 @@ export function createContainer(cfg: AppConfig = loadConfig()) {
   const credentials = new CredentialService(prisma, cipher, providers, platformApps);
   const scheduler = new SchedulerService(prisma, queues);
   const publisher = new PublishProcessor(prisma, providers, credentials, storage, scheduler);
-  return { cfg, prisma, redis, queues, cipher, providers, storage, platformApps, credentials, scheduler, publisher };
+  const demo = new DemoService(prisma, storage, credentials, scheduler, cfg);
+  return { cfg, prisma, redis, queues, cipher, providers, storage, platformApps, credentials, scheduler, publisher, demo };
 }
 
 export type Container = ReturnType<typeof createContainer>;

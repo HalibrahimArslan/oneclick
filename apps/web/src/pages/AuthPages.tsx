@@ -1,11 +1,11 @@
-import { CalendarCheck2, Eye, Layers } from 'lucide-react';
+import { CalendarCheck2, Eye, Layers, PlayCircle } from 'lucide-react';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { PlatformIcon } from '../components/identity';
 import { Logo } from '../components/Layout';
 import { Button, cx, Field, Input, Notice } from '../components/ui';
 import { useAuth } from '../lib/auth';
-import { useRegistrationOpen } from '../lib/queries';
+import { useAuthConfig } from '../lib/queries';
 
 const PROMISES = [
   { icon: Layers, title: 'Bir kez yazın', body: 'Instagram, TikTok ve LinkedIn için tek metin, hesaba göre ince ayar.' },
@@ -95,6 +95,49 @@ function Shell({ title, subtitle, children, footer }: { title: string; subtitle:
   );
 }
 
+/** Tanıtım modu: kayıt olmadan örnek verili geçici bir çalışma alanı açar. */
+function DemoEntry() {
+  const config = useAuthConfig().data;
+  const { startDemo } = useAuth();
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!config?.demoMode) return null;
+
+  const start = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await startDemo();
+      navigate('/calendar', { replace: true });
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-6">
+      <div className="mb-6 flex items-center gap-3 text-caption text-faint">
+        <span className="h-px flex-1 bg-line" />
+        veya
+        <span className="h-px flex-1 bg-line" />
+      </div>
+      {error && (
+        <div className="mb-3">
+          <Notice tone="error">{error}</Notice>
+        </div>
+      )}
+      <Button size="lg" icon={PlayCircle} className="w-full" loading={busy} onClick={start}>
+        Demoyu dene
+      </Button>
+      <p className="mt-2 text-center text-caption text-muted">
+        Kayıt gerekmez. Örnek hesaplar ve gönderilerle {config.demoTtlHours} saat boyunca deneyin; hiçbir şey gerçek platformlara gitmez.
+      </p>
+    </div>
+  );
+}
+
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -103,7 +146,7 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const { data: registrationOpen } = useRegistrationOpen();
+  const registrationOpen = useAuthConfig().data?.registrationOpen;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -146,6 +189,7 @@ export function LoginPage() {
           Giriş yap
         </Button>
       </form>
+      <DemoEntry />
     </Shell>
   );
 }
@@ -156,7 +200,7 @@ export function RegisterPage() {
   const [form, setForm] = useState({ name: '', email: '', password: '', workspaceName: '' });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const { data: registrationOpen } = useRegistrationOpen();
+  const registrationOpen = useAuthConfig().data?.registrationOpen;
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.value });
 
   const submit = async (e: FormEvent) => {
@@ -208,6 +252,7 @@ export function RegisterPage() {
         </Button>
       </form>
       )}
+      <DemoEntry />
     </Shell>
   );
 }

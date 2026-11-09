@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { PLATFORMS, type Platform } from '@oneclick/shared';
 import type { Response } from 'express';
 import { z } from 'zod';
-import { CurrentMember, CurrentUser, MinRole, Public, type AuthUser, type Membership } from '../common/auth';
+import { CurrentMember, CurrentUser, MinRole, NoDemo, Public, type AuthUser, type Membership } from '../common/auth';
 import { InjectContainer } from '../common/core';
 import { toAccountDto } from '../common/serializers';
 import { ZodPipe } from '../common/zod.pipe';
@@ -42,6 +42,7 @@ export class AccountsController {
   /** OAuth akışını başlatır; dönen url'ye tarayıcı yönlendirilir. */
   @Get('connect/:platform')
   @MinRole('ADMIN')
+  @NoDemo()
   async connect(
     @Param('platform') platformParam: string,
     @CurrentUser() u: AuthUser,
@@ -66,6 +67,15 @@ export class AccountsController {
   async capabilities(@Param('wid') wid: string, @Param('id') id: string) {
     const account = await this.c.prisma.socialAccount.findFirst({ where: { id, workspaceId: wid } });
     if (!account) throw new NotFoundException();
+    if ((account.metadata as Record<string, unknown> | null)?.demo === true) {
+      return account.platform === 'TIKTOK'
+        ? {
+            creator_nickname: account.name,
+            privacy_level_options: ['PUBLIC_TO_EVERYONE', 'MUTUAL_FOLLOW_FRIENDS', 'SELF_ONLY'],
+            max_video_post_duration_sec: 600,
+          }
+        : {};
+    }
     const provider = this.c.providers[account.platform];
     if (!provider.getAccountCapabilities) return {};
     const accessToken = await this.c.credentials.getAccessToken(account);
