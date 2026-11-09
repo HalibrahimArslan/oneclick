@@ -1,0 +1,5 @@
+# HTTPS sertifikası Let's Encrypt'ten otomatik alınır ve yenilenir.
+{$APP_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy api:4000
+}
