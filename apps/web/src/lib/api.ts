@@ -8,6 +8,10 @@ export class ApiError extends Error {
   }
 }
 
+/** Statik tanıtım sürümü: istekler sunucu yerine tarayıcı içi sahte API'ye gider (src/demo/mockApi.ts) */
+export const IS_STATIC_DEMO = import.meta.env.VITE_DEMO === 'true';
+const mock = () => import('../demo/mockApi');
+
 let accessToken: string | null = null;
 let workspaceId: string | null = null;
 let refreshing: Promise<boolean> | null = null;
@@ -30,6 +34,7 @@ export const ws = (path: string) => {
 };
 
 export async function refreshAccessToken(): Promise<boolean> {
+  if (IS_STATIC_DEMO) return (await mock()).hasSession();
   if (!refreshing) {
     refreshing = (async () => {
       try {
@@ -55,6 +60,16 @@ interface Opts {
 }
 
 export async function api<T = any>(path: string, opts: Opts = {}, retried = false): Promise<T> {
+  if (IS_STATIC_DEMO) {
+    const m = await mock();
+    const method = opts.method ?? (opts.body !== undefined || opts.form ? 'POST' : 'GET');
+    try {
+      return (await m.handle(method, path, opts.body)) as T;
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401 && !path.startsWith('/auth/')) onSessionExpired?.();
+      throw err;
+    }
+  }
   const headers: Record<string, string> = {};
   if (accessToken) headers.authorization = `Bearer ${accessToken}`;
   let body: BodyInit | undefined;
@@ -96,6 +111,7 @@ const safeJson = (t: string) => {
 
 /** İlerleme bilgisiyle dosya yükleme (fetch ilerleme vermediği için XHR). */
 export function uploadFile<T>(path: string, file: File, onProgress?: (pct: number) => void): Promise<T> {
+  if (IS_STATIC_DEMO) return mock().then((m) => m.upload(file, onProgress) as Promise<T>);
   const send = () =>
     new Promise<{ status: number; body: any }>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
