@@ -1,0 +1,13 @@
+# Vercel'e yalnızca tanıtım sürümünün derlenmesi için gerekenler gider
+node_modules
+**/node_modules
+**/dist
+.turbo
+**/.env
+**/.env.bak*
+apps/api/uploads
+agent-team
+deploy
+docs
+*.log
+**/.env.local

@@ -7,3 +7,5 @@ apps/api/uploads
 coverage
 deploy/backups
 .env.bak*
+.vercel
+.env.local
