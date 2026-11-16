@@ -138,7 +138,7 @@ corepack enable
 # 2) Bağımlılıklar
 pnpm install
 
-# 3) Postgres ve Redis
+# 3) Postgres, Redis ve MinIO (yerel S3; konsol http://localhost:9001, oneclick / oneclick-secret)
 docker compose up -d
 
 # 4) Ortam değişkenleri
@@ -173,7 +173,10 @@ brew install cloudflared
 cloudflared tunnel --url http://localhost:4000
 # verilen https://xxxx.trycloudflare.com adresini .env'e yazın:
 #   API_PUBLIC_URL=https://xxxx.trycloudflare.com
-#   PUBLIC_MEDIA_BASE_URL=https://xxxx.trycloudflare.com/media
+
+# Medya MinIO'da durduğu için platformların erişebilmesi adına ikinci bir tünel:
+cloudflared tunnel --url http://localhost:9000
+#   PUBLIC_MEDIA_BASE_URL=https://yyyy.trycloudflare.com/oneclick
 ```
 
 Tünel adresi her açılışta değişir. Değiştiğinde `.env`'i ve platformlardaki dönüş adresini güncelleyin.
@@ -244,6 +247,16 @@ node apps/api/dist/worker.js    # worker (ayrı süreç)
 ```
 
 Üretimde `WEB_URL` ve `API_PUBLIC_URL` aynı alan adı olur. Medya için `STORAGE_DRIVER=s3` ve herkese açık bir bucket önerilir.
+
+### Tanıtım sürümü (Vercel)
+
+Yalnızca panelden oluşan, sunucusuz bir demo. API çağrılarını tarayıcı içindeki sahte bir API karşılar (`apps/web/src/demo/mockApi.ts`). Her ziyaretçi "Demoyu dene" ile örnek verili kendi çalışma alanını açar. Veri ziyaretçinin tarayıcısında kalır ve hiçbir şey gerçek platformlara gitmez.
+
+```bash
+pnpm --filter @oneclick/web build:demo   # yerelde dene: vite preview
+```
+
+Vercel'de repoyu içe aktarmanız yeterli. Kök dizindeki `vercel.json` kurulum ve derleme komutlarını ve çıktı klasörünü zaten tanımlıyor. Ortam değişkeni gerekmez.
 
 </details>
 

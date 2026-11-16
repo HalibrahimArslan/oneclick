@@ -1,6 +1,6 @@
 ---
 name: run-oneclick
-description: Launch OneClick locally on macOS (Postgres/Redis via OrbStack, NestJS API + worker on :4000, Vite panel on :5173) and smoke-test the login. Use when asked to run, start, or "ayağa kaldır" the project.
+description: Launch OneClick locally on macOS (Postgres/Redis/MinIO via OrbStack, NestJS API + worker on :4000, Vite panel on :5173) and smoke-test the login. Use when asked to run, start, or "ayağa kaldır" the project.
 ---
 
 # OneClick'i yerelde çalıştırma
@@ -22,8 +22,9 @@ command -v pnpm >/dev/null || corepack enable
 
 ```bash
 [ -d node_modules ] || pnpm install   # postinstall prisma generate'i de çalıştırır
-docker compose up -d
+docker compose up -d   # postgres, redis, minio (+ minio-init bucket'ı kurar ve çıkar)
 until docker exec oneclick-postgres-1 pg_isready -U oneclick >/dev/null 2>&1; do sleep 1; done
+until curl -sf localhost:9000/minio/health/live >/dev/null; do sleep 1; done
 ```
 
 ## 3. Ortam değişkenleri (yalnızca ilk kez)
@@ -66,6 +67,8 @@ curl -s -X POST localhost:5173/v1/auth/login -H 'content-type: application/json'
 ```
 
 ## Bilinen tuzaklar
+
+- **Medya MinIO'da (`STORAGE_DRIVER=s3`, bucket `oneclick`, herkese okunur).** Konsol: http://localhost:9001 (oneclick / oneclick-secret). Resmi `minio/minio` imajı artık yayınlanmıyor; compose'da `pgsty/minio` çatalı kullanılıyor. MinIO için `S3_FORCE_PATH_STYLE=true` şart, yoksa SDK `oneclick.localhost` adresine gider.
 
 - **API'yi `tsx` çalıştırır (esbuild), o yüzden `emitDecoratorMetadata` üretilmez.** Constructor parametresi tipe göre inject edilen her Nest provider'ı açılışta `Nest can't resolve dependencies of X` hatasıyla çöker. Her zaman açık token kullan: `@Inject(Reflector)`, `@InjectContainer()`.
 - API açılışta çökerse `tsx watch` süreci çıkar ve kaydedince geri gelmez. `pkill -f 'turbo run dev'; pkill -f 'tsx watch'; pkill -f vite` ile durdurup `pnpm dev`'i yeniden başlat.

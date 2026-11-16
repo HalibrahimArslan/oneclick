@@ -26,6 +26,8 @@ const envSchema = z.object({
   S3_BUCKET: z.string().optional(),
   S3_ACCESS_KEY_ID: z.string().optional(),
   S3_SECRET_ACCESS_KEY: z.string().optional(),
+  // MinIO gibi alt alan adı (bucket.host) desteklemeyen depolar için true: host/bucket/key
+  S3_FORCE_PATH_STYLE: bool,
 
   ENABLE_MOCK_PROVIDER: bool,
 

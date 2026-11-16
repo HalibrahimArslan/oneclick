@@ -1,4 +1,4 @@
-# Geliştirme için Postgres ve Redis: docker compose up -d
+# Geliştirme için Postgres, Redis ve MinIO (S3 uyumlu medya deposu): docker compose up -d
 services:
   postgres:
     image: postgres:16-alpine
@@ -22,6 +22,39 @@ services:
     volumes:
       - redisdata:/data
 
+  # Yerel S3: medya dosyaları "oneclick" bucket'ında. Konsol: http://localhost:9001 (oneclick / oneclick-secret)
+  # Resmi minio/minio imajı artık yayınlanmıyor; pgsty/minio bakımı süren topluluk çatalıdır (mc dahil)
+  minio:
+    image: &minio-image pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: oneclick
+      MINIO_ROOT_PASSWORD: oneclick-secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      retries: 10
+
+  # Bucket'ı oluşturur ve herkese okunur yapar (panel ve platformlar medyayı doğrudan buradan çeker)
+  minio-init:
+    image: *minio-image
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 oneclick oneclick-secret &&
+      mc mb --ignore-existing local/oneclick &&
+      mc anonymous set download local/oneclick
+      "
+    restart: "no"
+
 volumes:
   pgdata:
   redisdata:
+  miniodata:
