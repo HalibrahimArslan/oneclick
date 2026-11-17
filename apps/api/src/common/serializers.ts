@@ -1,5 +1,5 @@
-import type { MediaAsset, Post, PostMedia, PostTarget, SocialAccount, User } from '@prisma/client';
-import type { MediaAssetDto, PostDto, SocialAccountDto } from '@oneclick/shared';
+import type { Approval, MediaAsset, Post, PostMedia, PostTarget, SocialAccount, User } from '@prisma/client';
+import type { ApprovalDto, MediaAssetDto, PostDto, SocialAccountDto } from '@oneclick/shared';
 import type { Storage } from '../core/storage';
 
 export const toAccountDto = (a: SocialAccount): SocialAccountDto & { lastError: string | null } => ({
@@ -28,16 +28,35 @@ export const toMediaDto = (m: MediaAsset, storage: Storage): MediaAssetDto => ({
   createdAt: m.createdAt.toISOString(),
 });
 
+type UserRef = Pick<User, 'id' | 'name'>;
+type ApprovalWithUsers = Approval & { requester: UserRef; approver: UserRef | null };
+
 export type PostWithRelations = Post & {
-  author: Pick<User, 'id' | 'name'>;
+  author: UserRef;
   media: (PostMedia & { media: MediaAsset })[];
   targets: (PostTarget & { account: SocialAccount })[];
+  approvals: ApprovalWithUsers[];
 };
+
+const toApprovalDto = (a: ApprovalWithUsers): ApprovalDto => ({
+  decision: a.decision,
+  requestedBy: a.requester,
+  requestedAt: a.createdAt.toISOString(),
+  decidedBy: a.approver,
+  decidedAt: a.decidedAt?.toISOString() ?? null,
+  comment: a.comment,
+});
 
 export const POST_INCLUDE = {
   author: { select: { id: true, name: true } },
   media: { include: { media: true }, orderBy: { position: 'asc' as const } },
   targets: { include: { account: true }, orderBy: { createdAt: 'asc' as const } },
+  // Yalnızca son onay isteği
+  approvals: {
+    include: { requester: { select: { id: true, name: true } }, approver: { select: { id: true, name: true } } },
+    orderBy: { createdAt: 'desc' as const },
+    take: 1,
+  },
 };
 
 export const toPostDto = (p: PostWithRelations, storage: Storage): PostDto => ({
@@ -68,4 +87,5 @@ export const toPostDto = (p: PostWithRelations, storage: Storage): PostDto => ({
     errorMessage: t.errorMessage,
     publishedAt: t.publishedAt?.toISOString() ?? null,
   })),
+  approval: p.approvals[0] ? toApprovalDto(p.approvals[0]) : null,
 });

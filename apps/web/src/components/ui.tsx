@@ -312,17 +312,21 @@ export function Modal({
 }) {
   const titleId = useId();
   const panel = useRef<HTMLDivElement>(null);
+  // onClose çoğu yerde satır içi tanımlı ve her render'da değişir. Efekt ona bağlı olsaydı her tuş
+  // vuruşunda yeniden çalışıp odağı panele çeker, pencere içindeki alanlara yazılamazdı.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
     if (!open) return;
     const prev = document.activeElement as HTMLElement | null;
     panel.current?.focus();
-    const h = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const h = (e: KeyboardEvent) => e.key === 'Escape' && onCloseRef.current();
     window.addEventListener('keydown', h);
     return () => {
       window.removeEventListener('keydown', h);
       prev?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
   if (!open) return null;
   return createPortal(
     <div

@@ -20,9 +20,12 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  memberships WorkspaceMember[]
-  sessions    Session[]
-  posts       Post[]            @relation("PostAuthor")
+  memberships        WorkspaceMember[]
+  sessions           Session[]
+  posts              Post[]            @relation("PostAuthor")
+  approvalsRequested Approval[]        @relation("ApprovalRequester")
+  approvalsDecided   Approval[]        @relation("ApprovalApprover")
+  invitesCreated     Invite[]          @relation("InviteCreator")
 
   @@map("users")
 }
@@ -43,15 +46,18 @@ model Session {
 }
 
 model Workspace {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String
-  plan      String   @default("internal")
+  id               String    @id @default(uuid()) @db.Uuid
+  name             String
+  plan             String    @default("internal")
   // Doluysa geçici demo çalışma alanıdır; bu zamandan sonra silinir
-  demoExpiresAt DateTime? @map("demo_expires_at")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  demoExpiresAt    DateTime? @map("demo_expires_at")
+  // Açıksa Editörlerin gönderileri yayınlanmadan önce onaylanmalı
+  approvalRequired Boolean   @default(false) @map("approval_required")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
   members        WorkspaceMember[]
+  invites        Invite[]
   brands         Brand[]
   platformApps   PlatformApp[]
   socialAccounts SocialAccount[]
@@ -69,6 +75,26 @@ enum Role {
   EDITOR
   APPROVER
   VIEWER
+}
+
+// Ekip daveti: tek kullanımlık link. Token'ın kendisi saklanmaz, yalnızca sha256 özeti.
+model Invite {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  tokenHash   String    @unique @map("token_hash")
+  role        Role
+  // Yalnızca not amaçlı: linki kimin için oluşturduğunuz (kabul eden kişiyle eşleşmesi zorunlu değil)
+  note        String?
+  createdById String    @map("created_by_id") @db.Uuid
+  expiresAt   DateTime  @map("expires_at")
+  acceptedAt  DateTime? @map("accepted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User      @relation("InviteCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("invites")
 }
 
 model WorkspaceMember {
@@ -157,22 +183,22 @@ model Branding {
 }
 
 model SocialAccount {
-  id          String        @id @default(uuid()) @db.Uuid
-  workspaceId String        @map("workspace_id") @db.Uuid
-  brandId     String?       @map("brand_id") @db.Uuid
-  platform    Platform
-  accountType AccountType   @map("account_type")
-  externalId  String        @map("external_id")
-  name        String
-  username    String?
-  avatarUrl   String?       @map("avatar_url")
-  status      AccountStatus @default(ACTIVE)
-  lastError   String?       @map("last_error")
+  id            String        @id @default(uuid()) @db.Uuid
+  workspaceId   String        @map("workspace_id") @db.Uuid
+  brandId       String?       @map("brand_id") @db.Uuid
+  platform      Platform
+  accountType   AccountType   @map("account_type")
+  externalId    String        @map("external_id")
+  name          String
+  username      String?
+  avatarUrl     String?       @map("avatar_url")
+  status        AccountStatus @default(ACTIVE)
+  lastError     String?       @map("last_error")
   // Platforma özel ek bilgiler (ör. LinkedIn şirket sayfası URN'i)
-  metadata    Json?
-  connectedById String?     @map("connected_by_id") @db.Uuid
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
+  metadata      Json?
+  connectedById String?       @map("connected_by_id") @db.Uuid
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
 
   workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   brand         Brand?           @relation(fields: [brandId], references: [id], onDelete: SetNull)
@@ -187,15 +213,15 @@ model SocialAccount {
 }
 
 model OAuthCredential {
-  id                String    @id @default(uuid()) @db.Uuid
-  socialAccountId   String    @unique @map("social_account_id") @db.Uuid
+  id               String    @id @default(uuid()) @db.Uuid
+  socialAccountId  String    @unique @map("social_account_id") @db.Uuid
   // AES-256-GCM ile şifrelenmiş değerler
-  accessTokenEnc    String    @map("access_token_enc")
-  refreshTokenEnc   String?   @map("refresh_token_enc")
-  expiresAt         DateTime? @map("expires_at")
-  refreshExpiresAt  DateTime? @map("refresh_expires_at")
-  scopes            String[]
-  updatedAt         DateTime  @updatedAt @map("updated_at")
+  accessTokenEnc   String    @map("access_token_enc")
+  refreshTokenEnc  String?   @map("refresh_token_enc")
+  expiresAt        DateTime? @map("expires_at")
+  refreshExpiresAt DateTime? @map("refresh_expires_at")
+  scopes           String[]
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
   account SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
 
@@ -212,18 +238,18 @@ enum MediaStatus {
 }
 
 model MediaAsset {
-  id          String      @id @default(uuid()) @db.Uuid
-  workspaceId String      @map("workspace_id") @db.Uuid
-  uploadedById String?    @map("uploaded_by_id") @db.Uuid
-  fileName    String      @map("file_name")
-  storageKey  String      @unique @map("storage_key")
-  mime        String
-  width       Int?
-  height      Int?
-  durationS   Float?      @map("duration_s")
-  sizeBytes   Int         @map("size_bytes")
-  status      MediaStatus @default(READY)
-  createdAt   DateTime    @default(now()) @map("created_at")
+  id           String      @id @default(uuid()) @db.Uuid
+  workspaceId  String      @map("workspace_id") @db.Uuid
+  uploadedById String?     @map("uploaded_by_id") @db.Uuid
+  fileName     String      @map("file_name")
+  storageKey   String      @unique @map("storage_key")
+  mime         String
+  width        Int?
+  height       Int?
+  durationS    Float?      @map("duration_s")
+  sizeBytes    Int         @map("size_bytes")
+  status       MediaStatus @default(READY)
+  createdAt    DateTime    @default(now()) @map("created_at")
 
   workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   posts     PostMedia[]
@@ -352,7 +378,9 @@ model Approval {
   decidedAt   DateTime?        @map("decided_at")
   createdAt   DateTime         @default(now()) @map("created_at")
 
-  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  post      Post  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  requester User  @relation("ApprovalRequester", fields: [requestedBy], references: [id], onDelete: Cascade)
+  approver  User? @relation("ApprovalApprover", fields: [approverId], references: [id], onDelete: SetNull)
 
   @@index([postId])
   @@map("approvals")

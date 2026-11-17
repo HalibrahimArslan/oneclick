@@ -1,15 +1,16 @@
-import type { PostDto } from '@oneclick/shared';
-import { ExternalLink, Pencil, RotateCcw, Send, Trash2 } from 'lucide-react';
+import { canApprove, canPublishDirectly, type ApprovalDto, type PostDto } from '@oneclick/shared';
+import { Check, ExternalLink, Pencil, RotateCcw, Send, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, ws } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { fmtLong } from '../lib/format';
 import { usePost, usePostAction } from '../lib/queries';
 import { useFeedback } from './feedback';
 import { AccountAvatar, PlatformIcon, StatusPill } from './identity';
 import { MediaThumb } from './MediaLibrary';
 import { PostPreview } from './PostPreview';
-import { Button, Modal, Notice, SegmentedControl, Skeleton } from './ui';
+import { Button, Input, Modal, Notice, SegmentedControl, Skeleton } from './ui';
 
 export function PostDetailModal({ postId, onClose }: { postId: string | null; onClose(): void }) {
   const post = usePost(postId ?? undefined);
@@ -50,6 +51,8 @@ function PostDetail({ post }: { post: PostDto }) {
           <span aria-hidden>·</span>
           <span>{post.author.name}</span>
         </div>
+
+        <ApprovalNote post={post} />
 
         {post.text ? (
           <p className="text-body leading-relaxed whitespace-pre-wrap text-ink-2">{post.text}</p>
@@ -143,13 +146,76 @@ function PostDetail({ post }: { post: PostDto }) {
   );
 }
 
+/** Onay bekliyor / reddedildi / onaylandı bilgisi */
+function ApprovalNote({ post }: { post: PostDto }) {
+  const a: ApprovalDto | null = post.approval;
+  if (!a) return null;
+  if (post.status === 'PENDING_APPROVAL' && a.decision === 'PENDING') {
+    return <Notice tone="warning">{a.requestedBy.name} {fmtLong(a.requestedAt)} tarihinde onay istedi. Onaylanınca planlanan zamanda yayınlanır.</Notice>;
+  }
+  if (post.status === 'DRAFT' && a.decision === 'REJECTED') {
+    return (
+      <Notice tone="error">
+        <strong className="font-semibold">{a.decidedBy?.name ?? 'Onaylayıcı'} reddetti:</strong> {a.comment}
+      </Notice>
+    );
+  }
+  if (a.decision === 'APPROVED' && a.decidedBy) {
+    return (
+      <p className="text-small text-muted">
+        {a.decidedBy.name} onayladı · {a.decidedAt && fmtLong(a.decidedAt)}
+        {a.comment && <span className="text-ink-2"> · “{a.comment}”</span>}
+      </p>
+    );
+  }
+  return null;
+}
+
 function DetailActions({ post, onDone }: { post: PostDto; onDone(): void }) {
   const navigate = useNavigate();
   const { confirm, toast } = useFeedback();
+  const { workspace } = useAuth();
   const publishNow = usePostAction(() => api(ws(`/posts/${post.id}/publish-now`), { method: 'POST' }));
   const remove = usePostAction(() => api(ws(`/posts/${post.id}`), { method: 'DELETE' }));
-  const editable = !['PUBLISHING', 'PUBLISHED'].includes(post.status);
-  const canPublish = ['DRAFT', 'SCHEDULED', 'PENDING_APPROVAL'].includes(post.status);
+  const approve = usePostAction(() => api(ws(`/posts/${post.id}/approve`), { body: {} }));
+  const reject = usePostAction((comment: string) => api(ws(`/posts/${post.id}/reject`), { body: { comment } }));
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState('');
+
+  const role = workspace?.role;
+  // Onaylayıcı ve İzleyici gönderi düzenleyemez/silemez (API'de MinRole EDITOR)
+  const canEdit = role === 'OWNER' || role === 'ADMIN' || role === 'EDITOR';
+  const pendingForMe = post.status === 'PENDING_APPROVAL' && canApprove(role);
+  const editable = canEdit && !['PUBLISHING', 'PUBLISHED'].includes(post.status);
+  const canPublish = canPublishDirectly(role, workspace?.approvalRequired) && ['DRAFT', 'SCHEDULED', 'PENDING_APPROVAL'].includes(post.status);
+  const actionError = publishNow.error ?? remove.error ?? approve.error ?? reject.error;
+
+  if (rejecting) {
+    const submitReject = (e: React.FormEvent) => {
+      e.preventDefault();
+      reject.mutate(reason.trim(), {
+        onSuccess: () => {
+          toast('Gönderi reddedildi; yazarı gerekçeyi görecek.', 'success');
+          setRejecting(false);
+          setReason('');
+        },
+      });
+    };
+    return (
+      <form onSubmit={submitReject} className="flex w-full flex-wrap items-center gap-2">
+        <div className="min-w-48 flex-1">
+          <Input autoFocus aria-label="Reddetme gerekçesi" placeholder="Reddetme gerekçesi (ör. görseli değiştirin)" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={1000} />
+        </div>
+        {reject.error && <span className="text-caption text-failed-fg">{(reject.error as Error).message}</span>}
+        <Button variant="ghost" onClick={() => setRejecting(false)}>
+          Vazgeç
+        </Button>
+        <Button type="submit" variant="danger" icon={X} loading={reject.isPending} disabled={reason.trim().length < 3}>
+          Reddet
+        </Button>
+      </form>
+    );
+  }
 
   const onDelete = async () => {
     const ok = await confirm({
@@ -169,18 +235,20 @@ function DetailActions({ post, onDone }: { post: PostDto; onDone(): void }) {
 
   return (
     <>
-      <Button variant="danger" icon={Trash2} loading={remove.isPending} disabled={post.status === 'PUBLISHING'} onClick={onDelete} className="mr-auto">
-        Sil
-      </Button>
-      {(publishNow.error || remove.error) && (
-        <span className="text-caption text-failed-fg">{((publishNow.error ?? remove.error) as Error).message}</span>
+      {canEdit ? (
+        <Button variant="danger" icon={Trash2} loading={remove.isPending} disabled={post.status === 'PUBLISHING'} onClick={onDelete} className="mr-auto">
+          Sil
+        </Button>
+      ) : (
+        <span className="mr-auto" />
       )}
+      {actionError && <span className="text-caption text-failed-fg">{(actionError as Error).message}</span>}
       {editable && (
         <>
-          <Button icon={Pencil} variant={canPublish ? 'secondary' : 'primary'} onClick={() => navigate(`/posts/${post.id}/edit`)}>
+          <Button icon={Pencil} variant={canPublish || pendingForMe ? 'secondary' : 'primary'} onClick={() => navigate(`/posts/${post.id}/edit`)}>
             Düzenle
           </Button>
-          {canPublish && (
+          {canPublish && !pendingForMe && (
             <Button
               variant="primary"
               icon={Send}
@@ -190,6 +258,21 @@ function DetailActions({ post, onDone }: { post: PostDto; onDone(): void }) {
               Şimdi yayınla
             </Button>
           )}
+        </>
+      )}
+      {pendingForMe && (
+        <>
+          <Button icon={X} onClick={() => setRejecting(true)}>
+            Reddet
+          </Button>
+          <Button
+            variant="primary"
+            icon={Check}
+            loading={approve.isPending}
+            onClick={() => approve.mutate(undefined, { onSuccess: () => toast('Gönderi onaylandı ve planlandı.', 'success') })}
+          >
+            Onayla
+          </Button>
         </>
       )}
     </>

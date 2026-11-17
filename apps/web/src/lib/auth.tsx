@@ -10,7 +10,7 @@ interface AuthState {
   workspace: WorkspaceDto | null;
   selectWorkspace(id: string): void;
   login(email: string, password: string): Promise<void>;
-  register(input: { name: string; email: string; password: string; workspaceName?: string }): Promise<void>;
+  register(input: { name: string; email: string; password: string; workspaceName?: string; inviteToken?: string }): Promise<void>;
   /** Örnek verili geçici demo çalışma alanı açar */
   startDemo(): Promise<void>;
   logout(): Promise<void>;

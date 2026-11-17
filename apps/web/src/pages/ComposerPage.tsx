@@ -45,7 +45,9 @@ import {
   Switch,
   Textarea,
 } from '../components/ui';
+import { canPublishDirectly } from '@oneclick/shared';
 import { api, ApiError, ws } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { useAccounts, usePost, type AccountRow } from '../lib/queries';
 
 interface TargetDraft {
@@ -97,6 +99,10 @@ export function ComposerPage() {
   const { toast, confirm } = useFeedback();
   const accounts = useAccounts();
   const existing = usePost(id);
+  const { workspace } = useAuth();
+  // Onay zorunluysa Editörün "Planla" / "Şimdi yayınla" isteği onaya gider
+  const viaApproval = !canPublishDirectly(workspace?.role, workspace?.approvalRequired);
+  const rejection = existing.data?.status === 'DRAFT' && existing.data.approval?.decision === 'REJECTED' ? existing.data.approval : null;
 
   const [text, setText] = useState('');
   const [media, setMedia] = useState<MediaAssetDto[]>([]);
@@ -192,6 +198,11 @@ export function ComposerPage() {
         ? await api<{ id: string }>(ws(`/posts/${id}`), { method: 'PUT', body })
         : await api<{ id: string }>(ws('/posts'), { body });
       initialKey.current = payloadKey;
+      if (mode !== 'draft' && viaApproval) {
+        toast('Gönderi onaya gönderildi. Onaylanınca yayınlanacak.', 'success');
+        navigate(`/posts?tab=approval&highlight=${post.id}`);
+        return;
+      }
       toast(mode === 'draft' ? 'Taslak kaydedildi.' : mode === 'now' ? 'Gönderi yayın kuyruğuna alındı.' : 'Gönderi planlandı.', 'success');
       navigate(mode === 'draft' ? '/posts?tab=drafts' : `/posts?highlight=${post.id}`);
     } catch (err) {
@@ -308,6 +319,14 @@ export function ComposerPage() {
           <main className="min-w-0 flex-1 overflow-y-auto">
             <div className="mx-auto max-w-170 space-y-4 p-4 sm:p-6">
               {error && <Notice tone="error">{error}</Notice>}
+              {rejection && (
+                <Notice tone="warning">
+                  <strong className="font-semibold">{rejection.decidedBy?.name ?? 'Onaylayıcı'} gönderiyi reddetti:</strong> {rejection.comment}
+                </Notice>
+              )}
+              {viaApproval && !rejection && (
+                <Notice tone="info">Bu çalışma alanında gönderiler yayınlanmadan önce onaylanır. Planladığınız gönderi önce onaya gider.</Notice>
+              )}
 
               <Card title="Gönderi">
                 <Textarea
@@ -385,7 +404,7 @@ export function ComposerPage() {
               loading={saving === 'schedule' || saving === 'now'}
               disabled={blocked || when < new Date()}
             >
-              Planla
+              {viaApproval ? 'Onaya gönder' : 'Planla'}
             </Button>
             <Popover
               side="top"
@@ -412,7 +431,7 @@ export function ComposerPage() {
                       submit('now');
                     }}
                   >
-                    Şimdi yayınla
+                    {viaApproval ? 'Onaya gönder (hemen yayın)' : 'Şimdi yayınla'}
                   </MenuItem>
                 </div>
               )}

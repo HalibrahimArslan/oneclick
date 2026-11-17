@@ -10,13 +10,14 @@ import { AuthProvider, useAuth } from './lib/auth';
 import { BrandingEffects } from './lib/branding';
 import { AccountsPage } from './pages/AccountsPage';
 import { BrandingPage } from './pages/BrandingPage';
-import { LoginPage, RegisterPage } from './pages/AuthPages';
+import { InvitePage, LoginPage, RegisterPage } from './pages/AuthPages';
 import { CalendarPage } from './pages/CalendarPage';
 import { ClientsPage } from './pages/ClientsPage';
 import { PlatformAppsPage } from './pages/PlatformAppsPage';
 import { ComposerPage } from './pages/ComposerPage';
 import { MediaPage } from './pages/MediaPage';
 import { PostsPage } from './pages/PostsPage';
+import { TeamPage } from './pages/TeamPage';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: true, staleTime: 15_000 } },
@@ -47,6 +48,8 @@ function App() {
     <Routes>
       <Route path="/login" element={<GuestOnly><LoginPage /></GuestOnly>} />
       <Route path="/register" element={<GuestOnly><RegisterPage /></GuestOnly>} />
+      {/* Davet linki: giriş yapmış ya da yapmamış herkes açabilir */}
+      <Route path="/invite/:token" element={<InvitePage />} />
       {/* Gönderi oluşturma tam ekran çalışır, uygulama kabuğu yok (DESIGN.md §5.3) */}
       <Route path="/compose" element={<RequireAuth><ComposerPage key="new" /></RequireAuth>} />
       <Route path="/posts/:id/edit" element={<RequireAuth><EditComposer /></RequireAuth>} />
@@ -58,6 +61,7 @@ function App() {
         <Route path="/clients" element={<ClientsPage />} />
         <Route path="/settings/apps" element={<PlatformAppsPage />} />
         <Route path="/settings/branding" element={<BrandingPage />} />
+        <Route path="/settings/team" element={<TeamPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/calendar" replace />} />
     </Routes>

@@ -1,9 +1,12 @@
 import { CalendarCheck2, Eye, Layers, PlayCircle } from 'lucide-react';
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { ROLE_LABELS, type InvitePreviewDto } from '@oneclick/shared';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { PlatformIcon } from '../components/identity';
 import { Logo } from '../components/Layout';
 import { Button, cx, Field, Input, Notice } from '../components/ui';
+import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useBranding } from '../lib/branding';
 import { useAuthConfig } from '../lib/queries';
@@ -23,7 +26,7 @@ const MINI = [
   { d: 'Cum', items: [] },
 ];
 
-function Shell({ title, subtitle, children, footer }: { title: string; subtitle: string; children: ReactNode; footer: ReactNode }) {
+export function Shell({ title, subtitle, children, footer }: { title: string; subtitle: string; children: ReactNode; footer: ReactNode }) {
   const { appName } = useBranding();
   return (
     <div className="flex min-h-screen bg-surface lg:flex-row-reverse">
@@ -140,9 +143,15 @@ function DemoEntry() {
   );
 }
 
+/** Girişten sonra dönülecek site içi yol (ör. davet linki). Dış adreslere yönlendirme engellenir. */
+export function safeNext(next: string | null) {
+  return next && next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\') ? next : null;
+}
+
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const next = safeNext(useSearchParams()[0].get('next'));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -156,7 +165,7 @@ export function LoginPage() {
     setError(null);
     try {
       await login(email, password);
-      navigate('/calendar', { replace: true });
+      navigate(next ?? '/calendar', { replace: true });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -255,6 +264,135 @@ export function RegisterPage() {
       </form>
       )}
       <DemoEntry />
+    </Shell>
+  );
+}
+
+/** Davet linki: /invite/:token. Giriş yapmışsa tek tıkla katılır, değilse burada kayıt olur. */
+export function InvitePage() {
+  const { token = '' } = useParams();
+  const { status, user, register, reload, selectWorkspace, logout } = useAuth();
+  const navigate = useNavigate();
+  const preview = useQuery({
+    queryKey: ['invite', token],
+    queryFn: () => api<InvitePreviewDto>(`/invites/${encodeURIComponent(token)}`),
+    retry: false,
+  });
+  const [form, setForm] = useState({ name: '', email: '', password: '' });
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const inv = preview.data;
+  const next = `/invite/${token}`;
+
+  const join = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api<{ workspaceId: string }>(`/invites/${encodeURIComponent(token)}/accept`, { method: 'POST' });
+      await reload();
+      selectWorkspace(r.workspaceId);
+      navigate('/calendar', { replace: true });
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  };
+
+  const signUp = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await register({ ...form, inviteToken: token });
+      navigate('/calendar', { replace: true });
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  };
+
+  if (preview.isLoading || status === 'loading') {
+    return (
+      <Shell title="Davet" subtitle="Davet bilgisi yükleniyor…" footer={null}>
+        <div className="h-24" />
+      </Shell>
+    );
+  }
+
+  if (!inv) {
+    return (
+      <Shell
+        title="Davet kullanılamıyor"
+        subtitle="Bu link ile çalışma alanına katılamazsınız."
+        footer={
+          <Link to="/login" className="font-medium text-brand-700 hover:underline">
+            Giriş sayfasına git
+          </Link>
+        }
+      >
+        <Notice tone="error">{(preview.error as Error | null)?.message ?? 'Davet bulunamadı.'}</Notice>
+      </Shell>
+    );
+  }
+
+  const title = `${inv.workspaceName} çalışma alanına katılın`;
+  const subtitle = `${inv.invitedBy} sizi ${ROLE_LABELS[inv.role]} olarak davet etti.`;
+
+  if (status === 'authenticated') {
+    return (
+      <Shell
+        title={title}
+        subtitle={subtitle}
+        footer={
+          <>
+            {user?.email} olarak giriş yaptınız.{' '}
+            <button type="button" onClick={() => logout()} className="font-medium text-brand-700 hover:underline">
+              Başka bir hesapla devam edin
+            </button>
+          </>
+        }
+      >
+        {error && (
+          <div className="mb-4">
+            <Notice tone="error">{error}</Notice>
+          </div>
+        )}
+        <Button variant="primary" size="lg" className="w-full" loading={busy} onClick={join}>
+          Katıl
+        </Button>
+      </Shell>
+    );
+  }
+
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.value });
+  return (
+    <Shell
+      title={title}
+      subtitle={`${subtitle} Katılmak için hesabınızı oluşturun.`}
+      footer={
+        <>
+          Zaten hesabınız var mı?{' '}
+          <Link to={`/login?next=${encodeURIComponent(next)}`} className="font-medium text-brand-700 hover:underline">
+            Giriş yapıp katılın
+          </Link>
+        </>
+      }
+    >
+      <form onSubmit={signUp} className="space-y-4">
+        {error && <Notice tone="error">{error}</Notice>}
+        <Field label="Adınız">
+          <Input inputSize="lg" autoComplete="name" required value={form.name} onChange={set('name')} />
+        </Field>
+        <Field label="E-posta">
+          <Input inputSize="lg" type="email" autoComplete="email" required value={form.email} onChange={set('email')} />
+        </Field>
+        <Field label="Şifre" hint="En az 8 karakter">
+          <Input inputSize="lg" type="password" autoComplete="new-password" required minLength={8} value={form.password} onChange={set('password')} />
+        </Field>
+        <Button type="submit" variant="primary" size="lg" className="w-full" loading={busy}>
+          Hesap oluştur ve katıl
+        </Button>
+      </form>
     </Shell>
   );
 }

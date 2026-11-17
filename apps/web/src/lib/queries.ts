@@ -1,4 +1,4 @@
-import type { BrandDto, BrandingDto, MediaAssetDto, Platform, PlatformAppDto, PostDto, SocialAccountDto } from '@oneclick/shared';
+import type { BrandDto, BrandingDto, InviteDto, MediaAssetDto, MemberDto, Platform, PlatformAppDto, PostDto, SocialAccountDto } from '@oneclick/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ws } from './api';
 import { useAuth } from './auth';
@@ -76,4 +76,15 @@ export function usePostAction<TArgs>(fn: (args: TArgs) => Promise<unknown>) {
       qc.invalidateQueries({ queryKey: ['post'] });
     },
   });
+}
+
+export function useMembers() {
+  const w = useWsKey();
+  return useQuery({ queryKey: ['members', w], queryFn: () => api<MemberDto[]>(ws('/members')) });
+}
+
+/** Bekleyen davetler (yalnızca Yönetici/Sahip) */
+export function useInvites(enabled: boolean) {
+  const w = useWsKey();
+  return useQuery({ queryKey: ['invites', w], queryFn: () => api<InviteDto[]>(ws('/invites')), enabled });
 }

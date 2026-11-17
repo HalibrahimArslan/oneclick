@@ -6,6 +6,8 @@ export const registerSchema = z.object({
   email: z.string().trim().toLowerCase().email('Geçerli bir e-posta girin'),
   password: z.string().min(8, 'Şifre en az 8 karakter olmalı').max(128),
   workspaceName: z.string().trim().min(2).max(80).optional(),
+  /** Davet linkiyle kayıt: kayıtlar kapalı olsa da izin verilir, kişisel çalışma alanı açılmaz */
+  inviteToken: z.string().min(20).max(200).optional(),
 });
 export type RegisterInput = z.infer<typeof registerSchema>;
 
@@ -105,7 +107,25 @@ export const mediaUploadRequestSchema = z.object({
   sizeBytes: z.number().int().positive().max(1024 * 1024 * 1024),
 });
 
-export const inviteMemberSchema = z.object({
-  email: z.string().trim().toLowerCase().email(),
-  role: z.enum(['ADMIN', 'EDITOR', 'APPROVER', 'VIEWER']),
+const ASSIGNABLE_ROLE = z.enum(['ADMIN', 'EDITOR', 'APPROVER', 'VIEWER'], { errorMap: () => ({ message: 'Geçersiz rol' }) });
+
+export const createInviteSchema = z.object({
+  role: ASSIGNABLE_ROLE,
+  note: z.string().trim().max(120).optional(),
 });
+export type CreateInviteInput = z.infer<typeof createInviteSchema>;
+
+export const updateMemberSchema = z.object({ role: ASSIGNABLE_ROLE });
+
+export const updateWorkspaceSettingsSchema = z.object({
+  name: z.string().trim().min(2, 'Ad en az 2 karakter olmalı').max(80).optional(),
+  approvalRequired: z.boolean().optional(),
+});
+
+export const rejectPostSchema = z.object({
+  comment: z.string().trim().min(3, 'Reddetme gerekçesi yazın').max(1000),
+});
+export const approvePostSchema = z.object({
+  comment: z.string().trim().max(1000).optional(),
+});
+

@@ -1,6 +1,6 @@
-import type { PostDto, PostStatus } from '@oneclick/shared';
+import { canApprove, canPublishDirectly, type PostDto, type PostStatus } from '@oneclick/shared';
 import { format } from 'date-fns';
-import { AlertCircle, CalendarClock, FilePen, MoreHorizontal, Pencil, Plus, Rocket, RotateCcw, Send, Trash2, TriangleAlert, type LucideIcon } from 'lucide-react';
+import { AlertCircle, CalendarClock, Eye, FilePen, MoreHorizontal, Pencil, Plus, Rocket, RotateCcw, Send, ShieldCheck, Trash2, TriangleAlert, type LucideIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useFeedback } from '../components/feedback';
@@ -9,10 +9,11 @@ import { MediaThumb } from '../components/MediaLibrary';
 import { PostDetailModal } from '../components/PostDetail';
 import { Button, Card, cx, EmptyState, IconButton, MenuItem, PageHeader, Popover, Skeleton, Tabs } from '../components/ui';
 import { api, ws } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { dayHeading, fmtShort } from '../lib/format';
 import { usePostAction, usePosts } from '../lib/queries';
 
-type TabKey = 'upcoming' | 'drafts' | 'failed' | 'published';
+type TabKey = 'upcoming' | 'approval' | 'drafts' | 'failed' | 'published';
 const TABS: { key: TabKey; label: string; match: PostStatus[]; empty: { icon: LucideIcon; title: string; body: string } }[] = [
   {
     key: 'upcoming',
@@ -21,10 +22,16 @@ const TABS: { key: TabKey; label: string; match: PostStatus[]; empty: { icon: Lu
     empty: { icon: CalendarClock, title: 'Planlanmış gönderi yok', body: 'Takvimde bir gün seçerek ya da yeni gönderi oluşturarak başlayın.' },
   },
   {
+    key: 'approval',
+    label: 'Onay bekleyen',
+    match: ['PENDING_APPROVAL'],
+    empty: { icon: ShieldCheck, title: 'Onay bekleyen gönderi yok', body: 'Editörlerin onaya gönderdiği gönderiler burada görünür.' },
+  },
+  {
     key: 'drafts',
     label: 'Taslaklar',
-    match: ['DRAFT', 'PENDING_APPROVAL'],
-    empty: { icon: FilePen, title: 'Taslak yok', body: 'Kaydettiğiniz taslaklar ve onay bekleyen gönderiler burada görünür.' },
+    match: ['DRAFT'],
+    empty: { icon: FilePen, title: 'Taslak yok', body: 'Kaydettiğiniz taslaklar ve reddedilen gönderiler burada görünür.' },
   },
   {
     key: 'failed',
@@ -44,6 +51,8 @@ const whenOf = (p: PostDto) => p.publishedAt ?? p.scheduledAt;
 
 export function PostsPage() {
   const navigate = useNavigate();
+  const { workspace } = useAuth();
+  const canCreate = ['OWNER', 'ADMIN', 'EDITOR'].includes(workspace?.role ?? '');
   const [params, setParams] = useSearchParams();
   const tab = TABS.find((t) => t.key === params.get('tab')) ?? TABS[0];
   const highlight = params.get('highlight');
@@ -58,7 +67,7 @@ export function PostsPage() {
   // Gün başlıklarına göre gruplanmış liste; taslaklarda tarihsizler en sonda
   const groups = useMemo(() => {
     const list = (posts.data ?? []).filter((p) => tab.match.includes(p.status));
-    const asc = tab.key === 'upcoming' || tab.key === 'drafts';
+    const asc = tab.key === 'upcoming' || tab.key === 'approval' || tab.key === 'drafts';
     list.sort((a, b) => {
       const ta = whenOf(a) ? new Date(whenOf(a)!).getTime() : asc ? Infinity : -Infinity;
       const tb = whenOf(b) ? new Date(whenOf(b)!).getTime() : asc ? Infinity : -Infinity;
@@ -84,11 +93,16 @@ export function PostsPage() {
 
   return (
     <div className="mx-auto max-w-220">
-      <PageHeader title="Gönderiler" actions={<Button icon={Plus} onClick={() => navigate('/compose')}>Gönderi oluştur</Button>} />
+      <PageHeader title="Gönderiler" actions={canCreate && <Button icon={Plus} onClick={() => navigate('/compose')}>Gönderi oluştur</Button>} />
       <Tabs
         value={tab.key}
         onChange={(k) => setParams({ tab: k })}
-        tabs={TABS.map((t) => ({ value: t.key, label: t.label, count: posts.data ? counts[t.key] : undefined }))}
+        // Onay sekmesi yalnızca onay açıkken ya da bekleyen gönderi varken görünür
+        tabs={TABS.filter((t) => t.key !== 'approval' || workspace?.approvalRequired || counts.approval > 0 || tab.key === 'approval').map((t) => ({
+          value: t.key,
+          label: t.label,
+          count: posts.data ? counts[t.key] : undefined,
+        }))}
       />
 
       <div className="mt-6">
@@ -151,9 +165,14 @@ function PostCard({ post, onOpen, highlighted }: { post: PostDto; onOpen(): void
   });
   const remove = usePostAction(() => api(ws(`/posts/${post.id}`), { method: 'DELETE' }));
 
+  const { workspace } = useAuth();
+  const role = workspace?.role;
+  const canEdit = role === 'OWNER' || role === 'ADMIN' || role === 'EDITOR';
   const failed = post.targets.filter((t) => t.status === 'FAILED');
-  const editable = !['PUBLISHING', 'PUBLISHED'].includes(post.status);
-  const canPublish = ['DRAFT', 'SCHEDULED', 'PENDING_APPROVAL'].includes(post.status);
+  const editable = canEdit && !['PUBLISHING', 'PUBLISHED'].includes(post.status);
+  const canPublish = canPublishDirectly(role, workspace?.approvalRequired) && ['DRAFT', 'SCHEDULED', 'PENDING_APPROVAL'].includes(post.status);
+  const reviewable = post.status === 'PENDING_APPROVAL' && canApprove(role);
+  const rejected = post.status === 'DRAFT' && post.approval?.decision === 'REJECTED' ? post.approval : null;
   const accounts = post.targets.map((t) => ({ ...t.account }));
   const first = post.media[0];
   const err = (publishNow.error ?? retry.error ?? remove.error) as Error | null;
@@ -210,8 +229,20 @@ function PostCard({ post, onOpen, highlighted }: { post: PostDto; onOpen(): void
           </span>
         )}
         {post.status === 'DRAFT' && post.scheduledAt && <span className="text-caption text-muted">{fmtShort(post.scheduledAt)} için taslak</span>}
+        {rejected && (
+          <span className="flex min-w-0 items-center gap-1 text-caption text-failed-fg" title={rejected.comment ?? undefined}>
+            <AlertCircle className="size-3.5 shrink-0" />
+            <span className="truncate">Reddedildi: {rejected.comment}</span>
+          </span>
+        )}
+        {post.status === 'PENDING_APPROVAL' && post.approval && <span className="truncate text-caption text-muted">{post.approval.requestedBy.name} onay istedi</span>}
         {err && <span className="text-caption text-failed-fg">{err.message}</span>}
         <span className="flex-1" />
+        {reviewable && (
+          <Button size="sm" variant="primary" icon={Eye} onClick={onOpen}>
+            İncele
+          </Button>
+        )}
         {failed.length > 0 && (
           <Button size="sm" icon={RotateCcw} loading={retry.isPending} onClick={() => retry.mutate(failed.map((t) => t.id))}>
             Tekrar dene
@@ -222,7 +253,7 @@ function PostCard({ post, onOpen, highlighted }: { post: PostDto; onOpen(): void
             Düzenle
           </Button>
         )}
-        {canPublish && (
+        {canPublish && !reviewable && (
           <Button
             size="sm"
             icon={Send}
@@ -232,23 +263,25 @@ function PostCard({ post, onOpen, highlighted }: { post: PostDto; onOpen(): void
             Şimdi yayınla
           </Button>
         )}
-        <Popover align="end" className="w-44" trigger={({ toggle }) => <IconButton icon={MoreHorizontal} size="sm" label="Diğer işlemler" onClick={toggle} />}>
-          {(close) => (
-            <div role="menu">
-              <MenuItem
-                icon={Trash2}
-                danger
-                disabled={post.status === 'PUBLISHING'}
-                onClick={() => {
-                  close();
-                  onDelete();
-                }}
-              >
-                Sil
-              </MenuItem>
-            </div>
-          )}
-        </Popover>
+        {canEdit && (
+          <Popover align="end" className="w-44" trigger={({ toggle }) => <IconButton icon={MoreHorizontal} size="sm" label="Diğer işlemler" onClick={toggle} />}>
+            {(close) => (
+              <div role="menu">
+                <MenuItem
+                  icon={Trash2}
+                  danger
+                  disabled={post.status === 'PUBLISHING'}
+                  onClick={() => {
+                    close();
+                    onDelete();
+                  }}
+                >
+                  Sil
+                </MenuItem>
+              </div>
+            )}
+          </Popover>
+        )}
       </div>
     </article>
   );

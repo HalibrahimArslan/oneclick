@@ -1,9 +1,9 @@
 import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, NotFoundException, Param, Patch, Post, Put } from '@nestjs/common';
 import {
   createBrandSchema,
-  inviteMemberSchema,
   savePlatformAppSchema,
   updateBrandSchema,
+  updateWorkspaceSettingsSchema,
   type BrandDto,
   type Platform,
   type SavePlatformAppInput,
@@ -31,11 +31,19 @@ export class WorkspacesController {
     return { id: ws.id, name: ws.name, role: 'OWNER' };
   }
 
+  /** Çalışma alanı adı ve "onay zorunlu" ayarı */
   @Patch(':wid')
   @MinRole('ADMIN')
-  async rename(@Param('wid') wid: string, @Body(new ZodPipe(renameSchema)) body: { name: string }) {
-    const ws = await this.c.prisma.workspace.update({ where: { id: wid }, data: { name: body.name } });
-    return { id: ws.id, name: ws.name };
+  async update(
+    @Param('wid') wid: string,
+    @CurrentUser() u: AuthUser,
+    @Body(new ZodPipe(updateWorkspaceSettingsSchema)) body: z.infer<typeof updateWorkspaceSettingsSchema>,
+  ) {
+    const ws = await this.c.prisma.workspace.update({ where: { id: wid }, data: { name: body.name, approvalRequired: body.approvalRequired } });
+    if (body.approvalRequired !== undefined) {
+      await this.audit(wid, u.id, 'workspace.approval_required', { value: String(body.approvalRequired) });
+    }
+    return { id: ws.id, name: ws.name, approvalRequired: ws.approvalRequired };
   }
 
   /** Composer ve hesap ekranı için: hangi platformlar bağlanabilir */
@@ -122,31 +130,6 @@ export class WorkspacesController {
   async deleteBrand(@Param('wid') wid: string, @Param('id') id: string) {
     const { count } = await this.c.prisma.brand.deleteMany({ where: { id, workspaceId: wid } });
     if (!count) throw new NotFoundException('Müşteri bulunamadı');
-  }
-
-  @Get(':wid/members')
-  async members(@Param('wid') wid: string) {
-    const ms = await this.c.prisma.workspaceMember.findMany({
-      where: { workspaceId: wid },
-      include: { user: { select: { id: true, name: true, email: true } } },
-      orderBy: { createdAt: 'asc' },
-    });
-    return ms.map((m) => ({ ...m.user, role: m.role }));
-  }
-
-  /** Şimdilik yalnızca kayıtlı kullanıcıları ekler; e-posta daveti Faz 2'de. */
-  @Post(':wid/members')
-  @MinRole('ADMIN')
-  @NoDemo()
-  async addMember(@Param('wid') wid: string, @Body(new ZodPipe(inviteMemberSchema)) body: z.infer<typeof inviteMemberSchema>) {
-    const user = await this.c.prisma.user.findUnique({ where: { email: body.email } });
-    if (!user) throw new NotFoundException('Bu e-postayla kayıtlı kullanıcı yok; önce kayıt olmalı');
-    await this.c.prisma.workspaceMember.upsert({
-      where: { workspaceId_userId: { workspaceId: wid, userId: user.id } },
-      create: { workspaceId: wid, userId: user.id, role: body.role },
-      update: { role: body.role },
-    });
-    return { id: user.id, name: user.name, email: user.email, role: body.role };
   }
 
   private parseRealPlatform(p: string): Platform {

@@ -10,14 +10,19 @@ import {
   Param,
   Patch,
   Post,
+  ForbiddenException,
   Put,
   Query,
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import {
+  approvePostSchema,
+  canApprove,
+  canPublishDirectly,
   hasErrors,
   instagramOptionsSchema,
   listPostsQuerySchema,
+  rejectPostSchema,
   reschedulePostSchema,
   tiktokOptionsSchema,
   upsertPostSchema,
@@ -27,7 +32,7 @@ import {
   type ValidationIssue,
 } from '@oneclick/shared';
 import { z } from 'zod';
-import { CurrentUser, MinRole, type AuthUser } from '../common/auth';
+import { CurrentMember, CurrentUser, MinRole, type AuthUser, type Membership } from '../common/auth';
 import { InjectContainer } from '../common/core';
 import { POST_INCLUDE, toPostDto } from '../common/serializers';
 import { ZodPipe } from '../common/zod.pipe';
@@ -83,17 +88,23 @@ export class PostsController {
 
   @Post('posts')
   @MinRole('EDITOR')
-  async create(@Param('wid') wid: string, @CurrentUser() u: AuthUser, @Body(new ZodPipe(upsertPostSchema)) body: UpsertPostInput) {
+  async create(
+    @Param('wid') wid: string,
+    @CurrentUser() u: AuthUser,
+    @CurrentMember() m: Membership,
+    @Body(new ZodPipe(upsertPostSchema)) body: UpsertPostInput,
+  ) {
     const checked = await this.check(wid, body);
     this.assertPublishable(body, checked);
+    const approval = await this.needsApproval(wid, m, body);
     const post = await this.c.prisma.post.create({
       data: {
         workspaceId: wid,
         authorId: u.id,
         brandId: body.brandId ?? null,
         text: body.text,
-        status: body.mode === 'draft' ? 'DRAFT' : 'SCHEDULED',
-        scheduledAt: this.when(body),
+        status: this.statusFor(body, approval),
+        scheduledAt: this.when(body, approval),
         media: { create: body.mediaIds.map((mediaAssetId, position) => ({ mediaAssetId, position })) },
         targets: {
           create: checked.targets.map((t) => ({
@@ -104,7 +115,7 @@ export class PostsController {
         },
       },
     });
-    await this.afterSave(wid, u.id, post.id, body, 'post.created');
+    await this.afterSave(wid, u.id, post.id, body, approval, 'post.created');
     return this.get(wid, post.id);
   }
 
@@ -114,6 +125,7 @@ export class PostsController {
     @Param('wid') wid: string,
     @Param('id') id: string,
     @CurrentUser() u: AuthUser,
+    @CurrentMember() m: Membership,
     @Body(new ZodPipe(upsertPostSchema)) body: UpsertPostInput,
   ) {
     const existing = await this.load(wid, id);
@@ -122,6 +134,8 @@ export class PostsController {
     }
     const checked = await this.check(wid, body);
     this.assertPublishable(body, checked);
+    // Onaylanmış gönderinin içeriği Editör tarafından değişirse yeniden onaya düşer
+    const approval = await this.needsApproval(wid, m, body);
     await this.c.scheduler.unschedulePost(id);
     await this.c.prisma.$transaction([
       this.c.prisma.postMedia.deleteMany({ where: { postId: id } }),
@@ -131,8 +145,8 @@ export class PostsController {
         data: {
           brandId: body.brandId ?? null,
           text: body.text,
-          status: body.mode === 'draft' ? 'DRAFT' : 'SCHEDULED',
-          scheduledAt: this.when(body),
+          status: this.statusFor(body, approval),
+          scheduledAt: this.when(body, approval),
           media: { create: body.mediaIds.map((mediaAssetId, position) => ({ mediaAssetId, position })) },
           targets: {
             create: checked.targets.map((t) => ({
@@ -144,7 +158,7 @@ export class PostsController {
         },
       }),
     ]);
-    await this.afterSave(wid, u.id, id, body, 'post.updated');
+    await this.afterSave(wid, u.id, id, body, approval, 'post.updated');
     return this.get(wid, id);
   }
 
@@ -171,9 +185,11 @@ export class PostsController {
   @Post('posts/:id/publish-now')
   @MinRole('EDITOR')
   @HttpCode(200)
-  async publishNow(@Param('wid') wid: string, @Param('id') id: string) {
+  async publishNow(@Param('wid') wid: string, @Param('id') id: string, @CurrentUser() u: AuthUser, @CurrentMember() m: Membership) {
     const post = await this.load(wid, id);
     if ((LOCKED as readonly string[]).includes(post.status)) throw new ConflictException('Gönderi zaten yayında');
+    const approvalRequired = await this.approvalRequired(wid);
+    if (!canPublishDirectly(m.role, approvalRequired)) throw new ForbiddenException('Bu gönderinin yayınlanması için onay gerekiyor');
     const checked = await this.check(wid, {
       text: post.text,
       mediaIds: post.media.map((m) => m.mediaAssetId),
@@ -185,10 +201,65 @@ export class PostsController {
       mode: 'now',
     } as UpsertPostInput);
     if (checked.hasErrors) throw new BadRequestException({ message: 'Gönderide hatalar var', targets: checked.targets });
+    // Onay bekleyen gönderiyi Yönetici/Sahip doğrudan yayınlarsa bu bir onaydır
+    if (post.status === 'PENDING_APPROVAL') await this.decide(id, u.id, 'APPROVED', null);
     const now = new Date();
     await this.c.prisma.post.update({ where: { id }, data: { scheduledAt: now, status: 'SCHEDULED' } });
     await this.c.scheduler.schedulePost(id, now);
     await this.c.scheduler.refreshPostStatus(id);
+    return this.get(wid, id);
+  }
+
+  // ---------- Onay akışı ----------
+
+  /** Onaylanan gönderi istenen zamanda (geçmişse hemen) yayınlanır. */
+  @Post('posts/:id/approve')
+  @MinRole('APPROVER')
+  @HttpCode(200)
+  async approve(
+    @Param('wid') wid: string,
+    @Param('id') id: string,
+    @CurrentUser() u: AuthUser,
+    @CurrentMember() m: Membership,
+    @Body(new ZodPipe(approvePostSchema)) body: { comment?: string },
+  ) {
+    if (!canApprove(m.role)) throw new ForbiddenException('Gönderileri yalnızca Onaylayıcı, Yönetici veya Sahip onaylayabilir');
+    const post = await this.load(wid, id);
+    if (post.status !== 'PENDING_APPROVAL') throw new ConflictException('Bu gönderi onay beklemiyor');
+    const checked = await this.check(wid, {
+      text: post.text,
+      mediaIds: post.media.map((pm) => pm.mediaAssetId),
+      targets: post.targets.map((t) => ({ socialAccountId: t.socialAccountId, textOverride: t.textOverride, options: t.options as Record<string, unknown> })),
+    });
+    if (checked.hasErrors) throw new BadRequestException({ message: 'Gönderide düzeltilmesi gereken hatalar var; onaylanamaz', targets: checked.targets });
+
+    const now = new Date();
+    const at = post.scheduledAt && post.scheduledAt > now ? post.scheduledAt : now;
+    await this.decide(id, u.id, 'APPROVED', body.comment ?? null);
+    await this.c.prisma.post.update({ where: { id }, data: { status: 'SCHEDULED', scheduledAt: at } });
+    await this.c.scheduler.schedulePost(id, at);
+    await this.c.scheduler.refreshPostStatus(id);
+    await this.audit(wid, u.id, 'post.approved', id);
+    return this.get(wid, id);
+  }
+
+  /** Reddedilen gönderi gerekçesiyle birlikte taslağa döner. */
+  @Post('posts/:id/reject')
+  @MinRole('APPROVER')
+  @HttpCode(200)
+  async reject(
+    @Param('wid') wid: string,
+    @Param('id') id: string,
+    @CurrentUser() u: AuthUser,
+    @CurrentMember() m: Membership,
+    @Body(new ZodPipe(rejectPostSchema)) body: { comment: string },
+  ) {
+    if (!canApprove(m.role)) throw new ForbiddenException('Gönderileri yalnızca Onaylayıcı, Yönetici veya Sahip reddedebilir');
+    const post = await this.load(wid, id);
+    if (post.status !== 'PENDING_APPROVAL') throw new ConflictException('Bu gönderi onay beklemiyor');
+    await this.decide(id, u.id, 'REJECTED', body.comment);
+    await this.c.prisma.post.update({ where: { id }, data: { status: 'DRAFT' } });
+    await this.audit(wid, u.id, 'post.rejected', id);
     return this.get(wid, id);
   }
 
@@ -225,14 +296,44 @@ export class PostsController {
     return post;
   }
 
-  private when(body: UpsertPostInput) {
-    if (body.mode === 'now') return new Date();
+  /** Onay beklerken "hemen yayınla" isteği zaman olmadan saklanır: onaylanınca hemen yayınlanır. */
+  private when(body: UpsertPostInput, approval = false) {
+    if (body.mode === 'now') return approval ? null : new Date();
     if (body.mode === 'schedule') return new Date(body.scheduledAt!);
     return body.scheduledAt ? new Date(body.scheduledAt) : null;
   }
 
-  private async afterSave(wid: string, userId: string, postId: string, body: UpsertPostInput, action: string) {
-    if (body.mode !== 'draft') {
+  private statusFor(body: UpsertPostInput, approval: boolean) {
+    if (body.mode === 'draft') return 'DRAFT' as const;
+    return approval ? ('PENDING_APPROVAL' as const) : ('SCHEDULED' as const);
+  }
+
+  private async approvalRequired(wid: string) {
+    const ws = await this.c.prisma.workspace.findUniqueOrThrow({ where: { id: wid }, select: { approvalRequired: true } });
+    return ws.approvalRequired;
+  }
+
+  /** Planlama/yayın isteği bu kullanıcı için onaya mı gitmeli */
+  private async needsApproval(wid: string, m: Membership, body: UpsertPostInput) {
+    if (body.mode === 'draft') return false;
+    return !canPublishDirectly(m.role, await this.approvalRequired(wid));
+  }
+
+  /** Bekleyen onay isteğini sonuçlandırır (yoksa sonuçlanmış bir kayıt açar). */
+  private async decide(postId: string, actorId: string, decision: 'APPROVED' | 'REJECTED', comment: string | null) {
+    const pending = await this.c.prisma.approval.findFirst({ where: { postId, decision: 'PENDING' }, orderBy: { createdAt: 'desc' } });
+    const data = { decision, approverId: actorId, decidedAt: new Date(), comment };
+    if (pending) await this.c.prisma.approval.update({ where: { id: pending.id }, data });
+    else await this.c.prisma.approval.create({ data: { postId, requestedBy: actorId, ...data } });
+  }
+
+  private async afterSave(wid: string, userId: string, postId: string, body: UpsertPostInput, approval: boolean, action: string) {
+    // Önceki bekleyen istek her kayıtta geçersiz olur; gerekiyorsa yenisi açılır
+    await this.c.prisma.approval.deleteMany({ where: { postId, decision: 'PENDING' } });
+    if (approval) {
+      await this.c.prisma.approval.create({ data: { postId, requestedBy: userId } });
+      await this.audit(wid, userId, 'post.approval_requested', postId);
+    } else if (body.mode !== 'draft') {
       await this.c.scheduler.schedulePost(postId, this.when(body)!);
       await this.c.scheduler.refreshPostStatus(postId);
     }

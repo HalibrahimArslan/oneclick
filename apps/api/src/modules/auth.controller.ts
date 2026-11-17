@@ -49,16 +49,26 @@ export class AuthController {
   @Public()
   @Post('register')
   async register(@Body(new ZodPipe(registerSchema)) body: RegisterInput, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    if (!(await this.registrationOpen())) throw new ForbiddenException('Yeni kayıtlar kapalı. Hesap için yöneticinizle görüşün.');
+    // Davet linkiyle gelen kişi kayıtlar kapalıyken de kayıt olabilir
+    if (body.inviteToken) await this.c.invites.findUsable(body.inviteToken);
+    else if (!(await this.registrationOpen())) throw new ForbiddenException('Yeni kayıtlar kapalı. Hesap için yöneticinizle görüşün.');
     const exists = await this.c.prisma.user.findUnique({ where: { email: body.email } });
-    if (exists) throw new ConflictException('Bu e-posta ile kayıtlı bir hesap var');
+    if (exists) {
+      throw new ConflictException(
+        body.inviteToken ? 'Bu e-posta ile kayıtlı bir hesap var. Daveti kabul etmek için giriş yapın.' : 'Bu e-posta ile kayıtlı bir hesap var',
+      );
+    }
 
+    const passwordHash = await hash(body.password);
     const user = await this.c.prisma.$transaction(async (tx) => {
-      const u = await tx.user.create({
-        data: { email: body.email, name: body.name, passwordHash: await hash(body.password) },
-      });
-      const ws = await tx.workspace.create({ data: { name: body.workspaceName || `${body.name} çalışma alanı` } });
-      await tx.workspaceMember.create({ data: { workspaceId: ws.id, userId: u.id, role: 'OWNER' } });
+      const u = await tx.user.create({ data: { email: body.email, name: body.name, passwordHash } });
+      if (body.inviteToken) {
+        // Davetle gelen kişiye kişisel çalışma alanı açılmaz; yalnızca davet edildiği alana katılır
+        await this.c.invites.accept(body.inviteToken, { id: u.id, isDemo: false }, tx);
+      } else {
+        const ws = await tx.workspace.create({ data: { name: body.workspaceName || `${body.name} çalışma alanı` } });
+        await tx.workspaceMember.create({ data: { workspaceId: ws.id, userId: u.id, role: 'OWNER' } });
+      }
       return u;
     });
     return this.issue(user, req, res);
@@ -118,6 +128,7 @@ export class AuthController {
         name: m.workspace.name,
         role: m.role,
         demoExpiresAt: m.workspace.demoExpiresAt?.toISOString() ?? null,
+        approvalRequired: m.workspace.approvalRequired,
       })),
     };
   }

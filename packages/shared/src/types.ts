@@ -29,6 +29,8 @@ export interface WorkspaceDto {
   role: Role;
   /** Doluysa geçici demo çalışma alanı; bu zamanda silinir */
   demoExpiresAt?: string | null;
+  /** Açıksa Editörlerin gönderileri yayınlanmadan önce onaylanmalı */
+  approvalRequired?: boolean;
 }
 
 export interface SocialAccountDto {
@@ -101,6 +103,20 @@ export interface PostDto {
   author: { id: string; name: string };
   media: MediaAssetDto[];
   targets: PostTargetDto[];
+  /** Son onay isteği (yoksa null) */
+  approval: ApprovalDto | null;
+}
+
+export type ApprovalDecision = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface ApprovalDto {
+  decision: ApprovalDecision;
+  requestedBy: { id: string; name: string };
+  requestedAt: string;
+  decidedBy: { id: string; name: string } | null;
+  decidedAt: string | null;
+  /** Reddetme gerekçesi ya da onay notu */
+  comment: string | null;
 }
 
 /** Beyaz etiket: tüm kurulum için geçerli marka. Giriş ekranı dahil her yerde kullanılır. */
@@ -114,4 +130,50 @@ export interface BrandingDto {
   color: string | null;
   /** Yüklenen logo (favicon olarak da kullanılır); null ise varsayılan logo */
   logoUrl: string | null;
+}
+
+// --- Ekip ve onay ---
+
+/** Gönderiyi onaylayabilen roller. (ROLE_RANK sıralamasından bağımsız: Onaylayıcı, Editörün altında ama onaylayabilir.) */
+export const APPROVER_ROLES: readonly Role[] = ['OWNER', 'ADMIN', 'APPROVER'];
+export const canApprove = (role: Role | undefined) => Boolean(role && APPROVER_ROLES.includes(role));
+
+/** Gönderiyi onaya göndermeden doğrudan planlayıp yayınlayabilir mi */
+export const canPublishDirectly = (role: Role | undefined, approvalRequired: boolean | undefined) =>
+  role === 'OWNER' || role === 'ADMIN' || (role === 'EDITOR' && !approvalRequired);
+
+export const ROLE_LABELS: Record<Role, string> = {
+  OWNER: 'Sahip',
+  ADMIN: 'Yönetici',
+  EDITOR: 'Editör',
+  APPROVER: 'Onaylayıcı',
+  VIEWER: 'İzleyici',
+};
+
+export interface MemberDto {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+}
+
+export interface InviteDto {
+  id: string;
+  role: Role;
+  note: string | null;
+  createdBy: { id: string; name: string };
+  expiresAt: string;
+  createdAt: string;
+}
+
+/** Davet oluşturulunca bir kez döner: token yalnızca bu yanıtta görünür */
+export interface CreatedInviteDto extends InviteDto {
+  token: string;
+}
+
+/** Davet linkini açan kişiye gösterilen bilgi (giriş gerektirmez) */
+export interface InvitePreviewDto {
+  workspaceName: string;
+  role: Role;
+  invitedBy: string;
 }

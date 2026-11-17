@@ -398,6 +398,8 @@ function toPostDto(p: Post): PostDto {
     scheduledAt: p.scheduledAt,
     publishedAt: p.publishedAt,
     createdAt: p.createdAt,
+    // Demo çalışma alanında onay akışı kullanılmıyor
+    approval: null,
     author: { id: st.user.id, name: st.user.name },
     media: p.mediaIds.map((id) => st.media.find((m) => m.id === id)).filter((m): m is Media => Boolean(m)).map(toMediaDto),
     targets: p.targets.map(({ queuedAt: _q, ...t }) => {
@@ -501,13 +503,28 @@ route('GET', '/auth/me', () => ({ user: s().user, workspaces: [s().workspace] })
 // Çalışma alanı
 route('POST', '/workspaces', () => fail(403, 'Demo hesabında yeni çalışma alanı açılamaz.'));
 route('PATCH', W, (_m, body) => {
-  const name = String(body?.name ?? '').trim();
-  if (name.length < 2) badRequest('Ad en az 2 karakter olmalı');
-  s().workspace.name = name;
-  return { id: s().workspace.id, name };
+  const ws = s().workspace;
+  if (body?.name !== undefined) {
+    const name = String(body.name).trim();
+    if (name.length < 2) badRequest('Ad en az 2 karakter olmalı');
+    ws.name = name;
+  }
+  if (typeof body?.approvalRequired === 'boolean') ws.approvalRequired = body.approvalRequired;
+  return { id: ws.id, name: ws.name, approvalRequired: Boolean(ws.approvalRequired) };
 });
+
+// Ekip: demo hesabında tek üye var; davet ve rol değişikliği gerçek API'de de demoda kapalı
+const TEAM_DEMO = 'Demo hesabında ekip daveti ve rol değişikliği kapalı.';
 route('GET', `${W}/members`, () => [{ ...s().user, role: 'OWNER' }]);
-route('POST', `${W}/members`, () => fail(403, 'Demo hesabında üye eklenemez.'));
+route('PATCH', `${W}/members/:id`, () => fail(403, TEAM_DEMO));
+route('DELETE', `${W}/members/:id`, () => fail(403, TEAM_DEMO));
+route('GET', `${W}/invites`, () => []);
+route('POST', `${W}/invites`, () => fail(403, TEAM_DEMO));
+route('DELETE', `${W}/invites/:id`, () => fail(403, TEAM_DEMO));
+route('GET', '/invites/:token', () => fail(404, 'Bu tanıtım sürümünde davet linkleri çalışmaz.'));
+route('POST', '/invites/:token/accept', () => fail(404, 'Bu tanıtım sürümünde davet linkleri çalışmaz.'));
+route('POST', `${W}/posts/:id/approve`, () => fail(409, 'Bu gönderi onay beklemiyor'));
+route('POST', `${W}/posts/:id/reject`, () => fail(409, 'Bu gönderi onay beklemiyor'));
 route('GET', `${W}/platforms`, () => (['INSTAGRAM', 'TIKTOK', 'LINKEDIN'] as Platform[]).map((platform) => ({ platform, configured: false })));
 route('GET', `${W}/platform-apps`, (): PlatformAppDto[] =>
   (['INSTAGRAM', 'TIKTOK', 'LINKEDIN'] as Platform[]).map((platform) => ({

@@ -15,6 +15,7 @@ import {
   Plus,
   Briefcase,
   SquarePen,
+  Users,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -40,6 +41,7 @@ const NAV: { group: string; items: { to: string; label: string; icon: LucideIcon
     items: [
       { to: '/accounts', label: 'Hesaplar', icon: Plug },
       { to: '/clients', label: 'Müşteriler', icon: Briefcase },
+      { to: '/settings/team', label: 'Ekip', icon: Users },
       { to: '/settings/apps', label: 'Platform uygulamaları', icon: KeyRound },
       { to: '/settings/branding', label: 'Marka', icon: Palette, ownerOnly: true },
     ],
@@ -59,12 +61,16 @@ export function Logo({ size = 28 }: { size?: number }) {
 
 const COLLAPSE_KEY = 'oneclick.sidebar.collapsed';
 
+/** Gönderi oluşturup kaydedebilen roller (API'de MinRole EDITOR) */
+const canCreatePosts = (role: string | undefined) => role === 'OWNER' || role === 'ADMIN' || role === 'EDITOR';
+
 export function Layout() {
   const [collapsed, setCollapsed] = useState(() => readLocal(COLLAPSE_KEY, false));
   const [drawer, setDrawer] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { appName } = useBranding();
+  const canCreate = canCreatePosts(useAuth().workspace?.role);
 
   useEffect(() => setDrawer(false), [location.pathname]);
   const toggle = () => {
@@ -93,7 +99,7 @@ export function Layout() {
         <IconButton icon={Menu} label="Menüyü aç" onClick={() => setDrawer(true)} />
         <Logo size={24} />
         <span className="flex-1 truncate text-heading font-semibold tracking-tight">{appName}</span>
-        <IconButton icon={Plus} label="Gönderi oluştur" primary onClick={() => navigate('/compose')} />
+        {canCreate && <IconButton icon={Plus} label="Gönderi oluştur" primary onClick={() => navigate('/compose')} />}
       </div>
       {drawer && (
         <div className="fixed inset-0 z-50 animate-fade-in bg-ink/40 md:hidden" onClick={() => setDrawer(false)}>
@@ -186,7 +192,7 @@ function SidebarBody({ collapsed, onToggle }: { collapsed: boolean; onToggle?():
         </Popover>
       </div>
 
-      <div className={cx('px-3 pb-4', collapsed && 'px-2')}>
+      <div className={cx('px-3 pb-4', collapsed && 'px-2', !canCreatePosts(workspace?.role) && 'hidden')}>
         <button
           onClick={() => navigate('/compose')}
           className={cx(

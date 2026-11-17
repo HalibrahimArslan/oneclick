@@ -5,6 +5,7 @@ import { createProviders } from '../providers';
 import { CredentialService } from './credentials';
 import { BrandingService } from './branding';
 import { DemoService } from './demo';
+import { InviteService } from './invites';
 import { PlatformAppService } from './platform-apps';
 import { PublishProcessor } from './publisher';
 import { createQueues, createRedis } from './queues';
@@ -25,7 +26,8 @@ export function createContainer(cfg: AppConfig = loadConfig()) {
   const publisher = new PublishProcessor(prisma, providers, credentials, storage, scheduler);
   const demo = new DemoService(prisma, storage, credentials, scheduler, cfg);
   const branding = new BrandingService(prisma, storage);
-  return { cfg, prisma, redis, queues, cipher, providers, storage, platformApps, credentials, scheduler, publisher, demo, branding };
+  const invites = new InviteService(prisma);
+  return { cfg, prisma, redis, queues, cipher, providers, storage, platformApps, credentials, scheduler, publisher, demo, branding, invites };
 }
 
 export type Container = ReturnType<typeof createContainer>;
