@@ -1,6 +1,6 @@
 import { type ConversationDetailDto, type ConversationDto, type InboxDto, type InboxMessageDto } from '@oneclick/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Check, CheckCheck, ExternalLink, EyeOff, Inbox, MessageCircle, RefreshCw, RotateCcw, Send, Tag } from 'lucide-react';
+import { ArrowLeft, Check, CheckCheck, Clock, ExternalLink, EyeOff, Film, Inbox, Mail, MessageCircle, MessagesSquare, RefreshCw, RotateCcw, Send, Tag } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useFeedback } from '../components/feedback';
@@ -11,7 +11,9 @@ import { useAuth } from '../lib/auth';
 import { fmtAgo, fmtLong } from '../lib/format';
 import { useConversation, useInbox, useLabels, useMembers, type InboxFilters } from '../lib/queries';
 
-const MAX_REPLY = 2200;
+/** Instagram sınırları: yorum 2.200, doğrudan mesaj 1.000 karakter */
+const MAX_COMMENT = 2200;
+const MAX_DM = 1000;
 const canAct = (role: string | undefined) => role === 'OWNER' || role === 'ADMIN' || role === 'EDITOR';
 
 export function InboxPage() {
@@ -43,7 +45,7 @@ export function InboxPage() {
     <div className="mx-auto max-w-300">
       <PageHeader
         title="Gelen kutusu"
-        subtitle="Instagram gönderilerinize gelen yorumlar. Birkaç dakikada bir kendiliğinden yenilenir."
+        subtitle="Instagram yorumları ve doğrudan mesajlar. Birkaç dakikada bir kendiliğinden yenilenir."
         actions={
           <Button variant="ghost" icon={RefreshCw} loading={syncing} onClick={sync}>
             Yenile
@@ -60,8 +62,10 @@ export function InboxPage() {
               </Link>
             }
           >
-            {data.needsReconnect.map((a) => a.name).join(', ')} için yorum izni yok. Yorumları görmek ve yanıtlamak için hesabı Hesaplar sayfasından yeniden
-            bağlayın.
+            {data.needsReconnect.map((a) => `${a.name} (${a.missing.map((x) => (x === 'comments' ? 'yorumlar' : 'mesajlar')).join(' ve ')})`).join(', ')} için izin
+            eksik. Hesabı Hesaplar sayfasından yeniden bağlayın.
+            {data.needsReconnect.some((a) => a.missing.includes('messages')) &&
+              ' Mesajlar için Instagram uygulamasında Ayarlar → Mesajlar ve hikâye yanıtları → Mesaj kontrolleri → Bağlı araçlar → “Mesajlara erişime izin ver” açık olmalı.'}
           </Notice>
         </div>
       )}
@@ -73,7 +77,7 @@ export function InboxPage() {
           <EmptyState
             icon={Inbox}
             title="Yorumları okunabilen hesap yok"
-            body="Gelen kutusu Instagram yorumlarıyla çalışır. LinkedIn ve TikTok yorum okumaya izin vermiyor. Bir Instagram hesabı bağlayın ya da yeniden bağlayıp yorum iznini onaylayın."
+            body="Gelen kutusu Instagram yorumları ve mesajlarıyla çalışır. LinkedIn ve TikTok bunlara izin vermiyor. Bir Instagram hesabı bağlayın ya da yeniden bağlayıp izinleri onaylayın."
             action={
               <Link to="/accounts">
                 <Button variant="primary">Hesaplara git</Button>
@@ -122,6 +126,7 @@ function ConversationList({
   return (
     <Card>
       <div className="space-y-2.5 border-b border-line p-3">
+        <div className="flex flex-wrap gap-2">
         <SegmentedControl
           label="Durum"
           size="sm"
@@ -132,6 +137,18 @@ function ConversationList({
             { value: 'DONE', label: `Bitti${data ? ` ${data.counts.done}` : ''}` },
           ]}
         />
+        <SegmentedControl
+          label="Tür"
+          size="sm"
+          value={filters.kind ?? 'ALL'}
+          onChange={(k) => set({ kind: k === 'ALL' ? undefined : (k as InboxFilters['kind']) })}
+          options={[
+            { value: 'ALL', label: 'Tümü' },
+            { value: 'COMMENT', label: 'Yorumlar', icon: MessagesSquare },
+            { value: 'DM', label: 'Mesajlar', icon: Mail },
+          ]}
+        />
+        </div>
         <div className="flex flex-wrap gap-2">
           <Select fit aria-label="Atanan" value={filters.assignee ?? ''} onChange={(e) => set({ assignee: (e.target.value || undefined) as InboxFilters['assignee'] })} className="h-8 text-small font-medium">
             <option value="">Herkes</option>
@@ -175,17 +192,32 @@ function ConversationList({
   );
 }
 
+/** Listede konuşmanın başlığı: DM'de kişi, yorumda son yazan */
+function title(c: ConversationDto) {
+  if (c.kind === 'DM') return c.participant?.username ? `@${c.participant.username}` : 'Doğrudan mesaj';
+  const p = c.preview;
+  return p?.direction === 'OUT' ? c.account.name : p?.authorName ? `@${p.authorName}` : c.account.name;
+}
+
 function ConversationItem({ c, active, onClick }: { c: ConversationDto; active: boolean; onClick(): void }) {
   const p = c.preview;
   return (
     <button type="button" onClick={onClick} aria-current={active || undefined} className={cx('flex w-full gap-3 px-3 py-3 text-left transition-colors', active ? 'bg-brand-50' : 'hover:bg-subtle')}>
       <AccountAvatar name={c.account.name} url={c.account.avatarUrl} platform={c.account.platform} size={32} />
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2">
-          <span className="min-w-0 flex-1 truncate text-small font-medium">{p?.direction === 'OUT' ? 'Siz' : p?.authorName ? `@${p.authorName}` : c.account.name}</span>
+        <div className="flex items-center gap-1.5">
+          {c.kind === 'DM' ? (
+            <Mail className="size-3.5 shrink-0 text-faint" aria-label="Doğrudan mesaj" />
+          ) : (
+            <MessagesSquare className="size-3.5 shrink-0 text-faint" aria-label="Yorum" />
+          )}
+          <span className="min-w-0 flex-1 truncate text-small font-medium">{title(c)}</span>
           {c.lastMessageAt && <span className="shrink-0 text-caption text-faint">{fmtAgo(c.lastMessageAt)}</span>}
         </div>
-        <p className={cx('mt-0.5 line-clamp-2 text-small', c.status === 'OPEN' && p?.direction === 'IN' ? 'text-ink-2' : 'text-muted')}>{p?.body}</p>
+        <p className={cx('mt-0.5 line-clamp-2 text-small', c.status === 'OPEN' && p?.direction === 'IN' ? 'text-ink-2' : 'text-muted')}>
+          {p?.direction === 'OUT' && <span className="text-faint">Siz: </span>}
+          {p?.body || <span className="text-faint italic">Ek</span>}
+        </p>
         {(c.labels.length > 0 || c.assignee) && (
           <div className="mt-1.5 flex flex-wrap items-center gap-1">
             {c.labels.map((l) => (
@@ -229,13 +261,22 @@ function ConversationView({ id, onBack }: { id: string; onBack(): void }) {
       <header className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2.5">
         <IconButton icon={ArrowLeft} label="Listeye dön" size="sm" onClick={onBack} className="lg:hidden" />
         <AccountAvatar name={c.account.name} url={c.account.avatarUrl} platform={c.account.platform} size={24} />
-        <span className="min-w-0 flex-1 truncate text-small font-medium">{c.account.name}</span>
+        <span className="min-w-0 flex-1 truncate text-small">
+          {c.kind === 'DM' ? (
+            <>
+              <span className="font-medium">{c.participant?.username ? `@${c.participant.username}` : 'Doğrudan mesaj'}</span>
+              <span className="text-muted"> · {c.account.name}</span>
+            </>
+          ) : (
+            <span className="font-medium">{c.account.name}</span>
+          )}
+        </span>
         {editable && <ConversationActions c={c} />}
       </header>
       {c.context && <PostContext ctx={c.context} />}
-      <ol className="space-y-3 px-4 py-4" aria-label="Yorumlar">
+      <ol className="space-y-3 px-4 py-4" aria-label={c.kind === 'DM' ? 'Mesajlar' : 'Yorumlar'}>
         {c.messages.map((m) => (
-          <MessageBubble key={m.id} m={m} editable={editable} />
+          <MessageBubble key={m.id} m={m} editable={editable && c.kind === 'COMMENT'} dm={c.kind === 'DM'} />
         ))}
       </ol>
       {editable ? (
@@ -273,7 +314,7 @@ function useApply() {
   };
 }
 
-function MessageBubble({ m, editable }: { m: InboxMessageDto; editable: boolean }) {
+function MessageBubble({ m, editable, dm }: { m: InboxMessageDto; editable: boolean; dm: boolean }) {
   const { toast } = useFeedback();
   const apply = useApply();
   const [busy, setBusy] = useState(false);
@@ -298,12 +339,31 @@ function MessageBubble({ m, editable }: { m: InboxMessageDto; editable: boolean 
       <div
         className={cx(
           'max-w-[85%] rounded-card px-3.5 py-2.5 text-body whitespace-pre-wrap',
-          out ? 'rounded-br-[4px] bg-brand-50 text-ink' : 'rounded-bl-[4px] bg-subtle text-ink',
+          out ? 'rounded-br-sm bg-brand-50 text-ink' : 'rounded-bl-sm bg-subtle text-ink',
           m.hidden && 'opacity-60',
         )}
       >
-        {!out && <p className="mb-0.5 text-caption font-medium text-ink-2">@{m.authorName ?? 'bilinmiyor'}</p>}
+        {!out && !dm && <p className="mb-0.5 text-caption font-medium text-ink-2">@{m.authorName ?? 'bilinmiyor'}</p>}
         {m.body}
+        {m.attachments.length > 0 && (
+          <div className={cx('flex flex-wrap gap-1.5', m.body && 'mt-2')}>
+            {m.attachments.map((a, i) =>
+              a.type === 'image' && a.url ? (
+                <a key={i} href={a.url} target="_blank" rel="noreferrer">
+                  <img src={a.url} alt="Ekli görsel" className="max-h-48 max-w-full rounded-control border border-line object-cover" />
+                </a>
+              ) : a.type === 'video' && a.url ? (
+                <a key={i} href={a.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-small font-medium text-brand-700 hover:underline">
+                  <Film className="size-4" /> Videoyu aç
+                </a>
+              ) : (
+                <span key={i} className="text-small text-muted italic">
+                  Hikâye yanıtı ya da paylaşım; Instagram'da görüntüleyin
+                </span>
+              ),
+            )}
+          </div>
+        )}
       </div>
       <div className={cx('mt-1 flex items-center gap-2 px-1 text-caption text-faint', out && 'flex-row-reverse')}>
         <time dateTime={m.sentAt} title={fmtLong(m.sentAt)}>
@@ -415,11 +475,31 @@ function ConversationActions({ c }: { c: ConversationDetailDto }) {
   );
 }
 
+/** DM: Instagram'ın yanıt vermeye izin verdiği kalan süre; dakikada bir güncellenir */
+function useRemaining(deadline: string | null) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!deadline) return;
+    const t = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, [deadline]);
+  return deadline ? new Date(deadline).getTime() - now : null;
+}
+
+const fmtRemaining = (ms: number) => {
+  const m = Math.max(1, Math.floor(ms / 60_000));
+  return m < 60 ? `${m} dk` : `${Math.floor(m / 60)} sa ${m % 60 ? `${m % 60} dk` : ''}`.trim();
+};
+
 function ReplyBox({ c }: { c: ConversationDetailDto }) {
   const apply = useApply();
   const { toast } = useFeedback();
+  const dm = c.kind === 'DM';
+  const max = dm ? MAX_DM : MAX_COMMENT;
+  const remaining = useRemaining(dm ? c.replyDeadline : null);
   const lastIn = useMemo(() => [...c.messages].reverse().find((m) => m.direction === 'IN'), [c.messages]);
-  const mention = lastIn?.authorName ? `@${lastIn.authorName} ` : '';
+  // Yorumda kişiye hitap; DM'de gerek yok
+  const mention = !dm && lastIn?.authorName ? `@${lastIn.authorName} ` : '';
   const [text, setText] = useState(mention);
   const [busy, setBusy] = useState(false);
 
@@ -434,7 +514,7 @@ function ReplyBox({ c }: { c: ConversationDetailDto }) {
     try {
       apply(await api<ConversationDetailDto>(ws(`/inbox/${c.id}/reply`), { body: { text: body } }));
       setText('');
-      toast('Yanıt gönderildi; konuşma bitti olarak işaretlendi.', 'success');
+      toast(dm ? 'Mesaj gönderildi; konuşma bitti olarak işaretlendi.' : 'Yanıt gönderildi; konuşma bitti olarak işaretlendi.', 'success');
     } catch (err) {
       toast((err as Error).message, 'error');
     } finally {
@@ -445,20 +525,39 @@ function ReplyBox({ c }: { c: ConversationDetailDto }) {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send();
   };
 
+  // DM: kişinin son mesajından 24 saat geçtiyse Instagram yanıt kabul etmez
+  if (dm && (remaining === null || remaining <= 0)) {
+    return (
+      <div className="flex items-start gap-2.5 rounded-b-card border-t border-line bg-canvas px-4 py-3.5 text-small text-muted">
+        <Clock className="mt-0.5 size-4 shrink-0" />
+        <p>
+          {remaining === null
+            ? 'Bu konuşmada kişiden gelen mesaj yok; Instagram yalnızca size yazan kişilere yanıt vermeye izin verir.'
+            : 'Kişinin son mesajının üzerinden 24 saat geçti. Instagram, kişi yeniden yazana kadar bu konuşmaya yanıt vermeye izin vermiyor.'}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={send} className="border-t border-line p-3">
+      {dm && remaining !== null && (
+        <p className={cx('mb-2 inline-flex items-center gap-1.5 text-caption', remaining < 3 * 3600_000 ? 'font-medium text-pending-fg' : 'text-muted')}>
+          <Clock className="size-3.5" /> Yanıt için {fmtRemaining(remaining)} kaldı
+        </p>
+      )}
       <Textarea
-        aria-label="Yanıt"
+        aria-label={dm ? 'Mesaj' : 'Yanıt'}
         rows={3}
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={onKey}
-        maxLength={MAX_REPLY}
-        placeholder="Herkese açık yanıt yazın…"
+        maxLength={max}
+        placeholder={dm ? 'Mesaj yazın…' : 'Herkese açık yanıt yazın…'}
       />
       <div className="mt-2 flex items-center gap-3">
         <span className="flex-1 text-caption text-faint">
-          Yanıt Instagram'da herkese açık görünür · {text.length}/{MAX_REPLY} · ⌘/Ctrl + Enter
+          {dm ? `Yalnızca @${c.participant?.username ?? 'kişi'} görür` : "Yanıt Instagram'da herkese açık görünür"} · {text.length}/{max} · ⌘/Ctrl + Enter
         </span>
         <Button type="submit" variant="primary" icon={Send} loading={busy} disabled={!text.trim() || text.trim() === mention.trim()}>
           Yanıtla

@@ -91,6 +91,7 @@ export function useInvites(enabled: boolean) {
 
 export interface InboxFilters {
   status: 'OPEN' | 'DONE';
+  kind?: 'COMMENT' | 'DM';
   assignee?: 'me' | 'unassigned';
   accountId?: string;
   labelId?: string;

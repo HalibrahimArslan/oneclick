@@ -89,6 +89,9 @@ interface Post {
 }
 interface MockConversation {
   id: string;
+  /** Eski demo kayıtlarında yok: yorum sayılır */
+  kind?: 'COMMENT' | 'DM';
+  participant?: { username: string | null };
   accountId: string;
   status: 'OPEN' | 'DONE';
   assigneeId: string | null;
@@ -106,6 +109,8 @@ interface State {
   /** Eski demo kayıtlarında yok; ilk erişimde örneklerle doldurulur */
   conversations?: MockConversation[];
   labels?: LabelDto[];
+  /** Örnek doğrudan mesajlar eklendi mi (yorumlardan sonra gelen özellik) */
+  dmSeeded?: boolean;
 }
 
 let state: State | null = load();
@@ -623,7 +628,21 @@ const DEMO_THREADS: { status: 'OPEN' | 'DONE'; messages: { author?: string; out?
   { status: 'DONE', messages: [{ author: 'takipci_kazan_99', body: 'Takipçi kazanmak için profilime bak!!! 🔥🔥', hoursAgo: 20, hidden: true }] },
 ];
 
-/** API'deki demo tohumlamasının karşılığı: yayınlanmış Kahve Durağı gönderisinin altındaki yorumlar */
+/** API'deki örnek DM'lerin karşılığı: 24 saat kuralının üç hâli */
+const DEMO_DMS: { status: 'OPEN' | 'DONE'; user: string; story?: boolean; messages: { out?: boolean; body: string; hoursAgo: number }[] }[] = [
+  { status: 'OPEN', user: 'can.ozturk', messages: [{ body: 'Merhaba, kurumsal etkinlik için toplu kahve siparişi alıyor musunuz? 40 kişilik bir toplantımız var.', hoursAgo: 1 }] },
+  { status: 'OPEN', user: 'elif.yilmaz', story: true, messages: [{ body: 'Hikâyedeki tatlı hangi şubede var? 😋', hoursAgo: 21 }] },
+  {
+    status: 'DONE',
+    user: 'zeynep.demir',
+    messages: [
+      { body: 'Moda şubesinde gözlüğümü unuttum galiba 🙈', hoursAgo: 30 },
+      { out: true, body: 'Merhaba Zeynep, bulduk! Kasada seni bekliyor 🙂', hoursAgo: 29 },
+    ],
+  },
+];
+
+/** API'deki demo tohumlamasının karşılığı: yayınlanmış Kahve Durağı gönderisinin altındaki yorumlar ve örnek mesajlar */
 function inboxState(st: State): { conversations: MockConversation[]; labels: LabelDto[] } {
   if (!st.conversations) {
     const account = st.accounts.find((a) => a.platform === 'INSTAGRAM' && a.username === 'kahveduragi');
@@ -647,22 +666,64 @@ function inboxState(st: State): { conversations: MockConversation[]; labels: Lab
             hidden: Boolean(m.hidden),
             sentAt: ago(m.hoursAgo),
             sentBy: null,
+            attachments: [],
           })),
         }))
       : [];
     st.labels = [];
+    st.dmSeeded = false;
+    save();
+  }
+  if (!st.dmSeeded) {
+    const account = st.accounts.find((a) => a.platform === 'INSTAGRAM' && a.username === 'kahveduragi');
+    const ago = (h: number) => iso(new Date(Date.now() - h * 3600_000));
+    if (account) {
+      for (const t of DEMO_DMS) {
+        st.conversations.push({
+          id: uuid(),
+          kind: 'DM',
+          participant: { username: t.user },
+          accountId: account.id,
+          status: t.status,
+          assigneeId: null,
+          labelIds: [],
+          context: null,
+          messages: t.messages.map((m) => ({
+            id: uuid(),
+            direction: m.out ? ('OUT' as const) : ('IN' as const),
+            authorName: m.out ? 'kahveduragi' : t.user,
+            body: m.body,
+            hidden: false,
+            sentAt: ago(m.hoursAgo),
+            sentBy: null,
+            attachments: t.story && !m.out ? [{ type: 'other' as const, url: null }] : [],
+          })),
+        });
+      }
+    }
+    st.dmSeeded = true;
     save();
   }
   return { conversations: st.conversations, labels: (st.labels ??= []) };
 }
 
+/** Kişinin son mesajı + 24 saat (Instagram yanıt penceresi) */
+const dmDeadline = (c: MockConversation) => {
+  const lastIn = c.messages.filter((m) => m.direction === 'IN').at(-1);
+  return lastIn ? iso(new Date(new Date(lastIn.sentAt).getTime() + 24 * 3600_000)) : null;
+};
+
 function toConversationDto(st: State, c: MockConversation): ConversationDto {
   const a = st.accounts.find((x) => x.id === c.accountId)!;
   const last = c.messages.at(-1);
   const assignee = c.assigneeId === st.user.id ? { id: st.user.id, name: st.user.name } : null;
+  const dm = c.kind === 'DM';
   return {
     id: c.id,
+    kind: dm ? 'DM' : 'COMMENT',
     status: c.status,
+    participant: dm ? { username: c.participant?.username ?? null } : null,
+    replyDeadline: dm ? dmDeadline(c) : null,
     account: { id: a.id, name: a.name, username: a.username, avatarUrl: a.avatarUrl, platform: a.platform },
     context: c.context,
     lastMessageAt: last?.sentAt ?? null,
@@ -674,11 +735,16 @@ function toConversationDto(st: State, c: MockConversation): ConversationDto {
 }
 
 const findConversation = (id: string) => inboxState(s()).conversations.find((c) => c.id === id) ?? fail(404, 'Konuşma bulunamadı');
-const conversationDetail = (c: MockConversation): ConversationDetailDto => ({ ...toConversationDto(s(), c), messages: c.messages });
+const conversationDetail = (c: MockConversation): ConversationDetailDto => ({
+  ...toConversationDto(s(), c),
+  // Eski demo kayıtlarındaki mesajlarda ek alanı yok
+  messages: c.messages.map((m) => ({ ...m, attachments: m.attachments ?? [] })),
+});
 
 route('GET', `${W}/inbox`, (_m, _b, q): InboxDto => {
   const st = s();
-  const { conversations } = inboxState(st);
+  const kind = q.get('kind');
+  const conversations = inboxState(st).conversations.filter((c) => !kind || (c.kind ?? 'COMMENT') === kind);
   const status = q.get('status') === 'DONE' ? 'DONE' : 'OPEN';
   const list = conversations
     .filter((c) => c.status === status)
@@ -703,7 +769,22 @@ route('POST', `${W}/inbox/:id/reply`, ([, , id], body) => {
   const c = findConversation(id);
   const text = String(body?.text ?? '').trim();
   if (!text) badRequest('Yanıt boş olamaz');
-  c.messages.push({ id: uuid(), direction: 'OUT', authorName: 'kahveduragi', body: text.slice(0, 2200), hidden: false, sentAt: iso(new Date()), sentBy: { id: s().user.id, name: s().user.name } });
+  if (c.kind === 'DM') {
+    const deadline = dmDeadline(c);
+    if (!deadline || new Date(deadline).getTime() < Date.now()) {
+      badRequest('Kişinin son mesajının üzerinden 24 saatten fazla geçti; Instagram bu konuşmaya yanıt vermeye izin vermiyor.');
+    }
+  }
+  c.messages.push({
+    id: uuid(),
+    direction: 'OUT',
+    authorName: 'kahveduragi',
+    body: text.slice(0, c.kind === 'DM' ? 1000 : 2200),
+    hidden: false,
+    sentAt: iso(new Date()),
+    sentBy: { id: s().user.id, name: s().user.name },
+    attachments: [],
+  });
   c.status = 'DONE';
   return conversationDetail(c);
 });
@@ -718,6 +799,7 @@ route('POST', `${W}/inbox/messages/:mid/hide`, ([, , mid], body) => {
   const c = inboxState(s()).conversations.find((x) => x.messages.some((m) => m.id === mid)) ?? fail(404, 'Yorum bulunamadı');
   const m = c.messages.find((x) => x.id === mid)!;
   if (m.direction === 'OUT') badRequest('Kendi yanıtınız gizlenemez');
+  if (c.kind === 'DM') badRequest('Doğrudan mesajlar gizlenemez');
   m.hidden = Boolean(body?.hidden);
   return conversationDetail(c);
 });

@@ -17,7 +17,8 @@ import { CurrentUser, MinRole, type AuthUser } from '../common/auth';
 import { InjectContainer } from '../common/core';
 import { ZodPipe } from '../common/zod.pipe';
 import type { Container } from '../core/container';
-import { canReadComments } from '../core/inbox';
+import { canReadComments, canReadMessages } from '../core/inbox';
+import { IG_REPLY_WINDOW_MS } from '../providers/instagram';
 
 const SYNC_COOLDOWN_S = 60;
 
@@ -32,14 +33,24 @@ const CONVERSATION_INCLUDE = {
 
 type ConversationRow = Prisma.ConversationGetPayload<{ include: typeof CONVERSATION_INCLUDE }>;
 
-const toConversationDto = (c: ConversationRow): ConversationDto => {
-  const ctx = c.context as { permalink?: string | null; caption?: string | null; thumbnailUrl?: string | null } | null;
+/** lastInAt: kişinin son mesajı (DM yanıt süresi için) */
+const toConversationDto = (c: ConversationRow, lastInAt: Date | null): ConversationDto => {
+  const ctx = c.context as {
+    permalink?: string | null;
+    caption?: string | null;
+    thumbnailUrl?: string | null;
+    participant?: { username: string | null };
+  } | null;
   const last = c.messages[0];
+  const dm = c.kind === 'DIRECT_MESSAGE';
   return {
     id: c.id,
+    kind: dm ? 'DM' : 'COMMENT',
     status: c.status,
+    participant: dm ? { username: ctx?.participant?.username ?? null } : null,
+    replyDeadline: dm && lastInAt ? new Date(lastInAt.getTime() + IG_REPLY_WINDOW_MS).toISOString() : null,
     account: c.account,
-    context: ctx ? { permalink: ctx.permalink ?? null, caption: ctx.caption ?? null, thumbnailUrl: ctx.thumbnailUrl ?? null } : null,
+    context: !dm && ctx ? { permalink: ctx.permalink ?? null, caption: ctx.caption ?? null, thumbnailUrl: ctx.thumbnailUrl ?? null } : null,
     lastMessageAt: c.lastMessageAt?.toISOString() ?? null,
     preview: last ? { direction: last.direction, authorName: last.authorName, body: last.body } : null,
     messageCount: c._count.messages,
@@ -55,7 +66,11 @@ export class InboxController {
 
   @Get('inbox')
   async list(@Param('wid') wid: string, @CurrentUser() u: AuthUser, @Query(new ZodPipe(inboxQuerySchema)) q: z.infer<typeof inboxQuerySchema>): Promise<InboxDto> {
-    const scope: Prisma.ConversationWhereInput = { account: { workspaceId: wid }, ...(q.accountId ? { socialAccountId: q.accountId } : {}) };
+    const scope: Prisma.ConversationWhereInput = {
+      account: { workspaceId: wid },
+      ...(q.accountId ? { socialAccountId: q.accountId } : {}),
+      ...(q.kind ? { kind: q.kind === 'DM' ? 'DIRECT_MESSAGE' : 'COMMENT_THREAD' } : {}),
+    };
     const where: Prisma.ConversationWhereInput = {
       ...scope,
       status: q.status,
@@ -72,11 +87,18 @@ export class InboxController {
         include: { credential: { select: { scopes: true } } },
       }),
     ]);
+    const lastIn = await this.lastInbound(rows.filter((r) => r.kind === 'DIRECT_MESSAGE').map((r) => r.id));
     return {
-      conversations: rows.map(toConversationDto),
+      conversations: rows.map((r) => toConversationDto(r, lastIn.get(r.id) ?? null)),
       counts: { open, mine, done },
-      needsReconnect: accounts.filter((a) => !canReadComments(a)).map((a) => ({ id: a.id, name: a.name })),
-      hasSupportedAccounts: accounts.some(canReadComments),
+      needsReconnect: accounts
+        .map((a) => ({
+          id: a.id,
+          name: a.name,
+          missing: [...(canReadComments(a) ? [] : ['comments' as const]), ...(canReadMessages(a) ? [] : ['messages' as const])],
+        }))
+        .filter((a) => a.missing.length),
+      hasSupportedAccounts: accounts.some((a) => canReadComments(a) || canReadMessages(a)),
     };
   }
 
@@ -84,10 +106,20 @@ export class InboxController {
   async get(@Param('wid') wid: string, @Param('id') id: string): Promise<ConversationDetailDto> {
     const conv = await this.load(wid, id);
     const messages = await this.c.prisma.message.findMany({ where: { conversationId: id }, include: { sentBy: USER_REF }, orderBy: { sentAt: 'asc' } });
+    const lastIn = messages.filter((m) => m.direction === 'IN').at(-1)?.sentAt ?? null;
     return {
-      ...toConversationDto(conv),
+      ...toConversationDto(conv, lastIn),
       messages: messages.map(
-        (m): InboxMessageDto => ({ id: m.id, direction: m.direction, authorName: m.authorName, body: m.body, hidden: m.hidden, sentAt: m.sentAt.toISOString(), sentBy: m.sentBy }),
+        (m): InboxMessageDto => ({
+          id: m.id,
+          direction: m.direction,
+          authorName: m.authorName,
+          body: m.body,
+          hidden: m.hidden,
+          sentAt: m.sentAt.toISOString(),
+          sentBy: m.sentBy,
+          attachments: (m.attachments as InboxMessageDto['attachments'] | null) ?? [],
+        }),
       ),
     };
   }
@@ -173,6 +205,13 @@ export class InboxController {
   async deleteLabel(@Param('wid') wid: string, @Param('id') id: string) {
     const { count } = await this.c.prisma.label.deleteMany({ where: { id, workspaceId: wid } });
     if (!count) throw new NotFoundException('Etiket bulunamadı');
+  }
+
+  /** DM konuşmalarında kişinin son mesaj zamanı (tek sorgu) */
+  private async lastInbound(ids: string[]) {
+    if (!ids.length) return new Map<string, Date>();
+    const rows = await this.c.prisma.message.groupBy({ by: ['conversationId'], where: { conversationId: { in: ids }, direction: 'IN' }, _max: { sentAt: true } });
+    return new Map(rows.filter((r) => r._max.sentAt).map((r) => [r.conversationId, r._max.sentAt!]));
   }
 
   private async load(wid: string, id: string) {

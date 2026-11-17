@@ -72,6 +72,19 @@ const DEMO_THREADS: DemoThread[] = [
   { status: 'DONE', messages: [{ author: 'takipci_kazan_99', body: 'Takipçi kazanmak için profilime bak!!! 🔥🔥', hoursAgo: 20, hidden: true }] },
 ];
 
+/** Örnek doğrudan mesajlar: 24 saat kuralının üç hâli (bol süre, az süre, süresi dolmuş) */
+const DEMO_DMS: DemoThread[] = [
+  { status: 'OPEN', messages: [{ author: 'can.ozturk', body: 'Merhaba, kurumsal etkinlik için toplu kahve siparişi alıyor musunuz? 40 kişilik bir toplantımız var.', hoursAgo: 1 }] },
+  { status: 'OPEN', messages: [{ author: 'elif.yilmaz', body: 'Hikâyedeki tatlı hangi şubede var? 😋', hoursAgo: 21 }] },
+  {
+    status: 'DONE',
+    messages: [
+      { author: 'zeynep.demir', body: 'Moda şubesinde gözlüğümü unuttum galiba 🙈', hoursAgo: 30 },
+      { out: true, body: 'Merhaba Zeynep, bulduk! Kasada seni bekliyor 🙂', hoursAgo: 29 },
+    ],
+  },
+];
+
 const samplePosts = (): SamplePost[] => [
   {
     brand: 'kahve',
@@ -288,6 +301,33 @@ export class DemoService {
           authorName: m.out ? 'kahveduragi' : m.author,
           body: m.body,
           hidden: Boolean(m.hidden),
+          sentAt: m.sentAt,
+        })),
+      });
+    }
+
+    for (const t of DEMO_DMS) {
+      const msgs = t.messages.map((m, i) => ({ ...m, externalId: `demo_dm_${randomUUID().slice(0, 8)}_${i}`, sentAt: ago(m.hoursAgo) }));
+      const username = t.messages.find((m) => m.author)!.author!;
+      const conv = await this.prisma.conversation.create({
+        data: {
+          socialAccountId: accountId,
+          kind: 'DIRECT_MESSAGE',
+          externalThreadId: `demo_thread_${randomUUID().slice(0, 8)}`,
+          context: { participant: { id: `demo_igsid_${username}`, username } },
+          status: t.status,
+          lastMessageAt: msgs.reduce((d, m) => (m.sentAt > d ? m.sentAt : d), msgs[0].sentAt),
+        },
+      });
+      await this.prisma.message.createMany({
+        data: msgs.map((m) => ({
+          conversationId: conv.id,
+          externalId: m.externalId,
+          direction: m.out ? ('OUT' as const) : ('IN' as const),
+          authorName: m.out ? 'kahveduragi' : m.author,
+          body: m.body,
+          // Hikâye yanıtı örneği: Instagram'da görüntülenebilen ek
+          attachments: username === 'elif.yilmaz' ? ([{ type: 'other', url: null }] as Prisma.InputJsonValue) : undefined,
           sentAt: m.sentAt,
         })),
       });

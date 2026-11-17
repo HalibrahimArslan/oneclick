@@ -82,6 +82,30 @@ export interface SocialProvider {
   /** Üst düzey yoruma yanıt yazar */
   replyToComment?(input: { accessToken: string; commentId: string; text: string }): Promise<{ id: string }>;
   setCommentHidden?(input: { accessToken: string; commentId: string; hidden: boolean }): Promise<void>;
+
+  // ---------- Gelen kutusu (doğrudan mesajlar) ----------
+  /** `since` sonrasında güncellenen konuşmalar ve son mesajları (yeniden eskiye) */
+  listDirectThreads?(input: { accessToken: string; account: PublishInput['account'] & { username: string | null }; since: Date | null }): Promise<ProviderDirectThread[]>;
+  /** Konuşmadaki kişiye mesaj gönderir (platformun yanıt süresi kurallarına tabidir) */
+  sendDirectMessage?(input: { accessToken: string; account: PublishInput['account']; recipientId: string; text: string }): Promise<{ id: string }>;
+}
+
+export interface ProviderDirectMessage {
+  id: string;
+  text: string;
+  timestamp: Date;
+  fromId: string | null;
+  fromUsername: string | null;
+  /** Görsel adresleri; desteklenmeyen tür (hikâye yanıtı, paylaşım…) için yalnızca not */
+  attachments: { type: 'image' | 'video' | 'other'; url: string | null }[];
+}
+
+export interface ProviderDirectThread {
+  id: string;
+  updatedAt: Date;
+  /** Konuşmadaki karşı taraf */
+  participant: { id: string; username: string | null };
+  messages: ProviderDirectMessage[];
 }
 
 export interface ProviderMedia {

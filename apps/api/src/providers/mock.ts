@@ -75,4 +75,9 @@ export class MockProvider implements SocialProvider {
   async setCommentHidden() {
     await sleep(200);
   }
+
+  async sendDirectMessage() {
+    await sleep(300);
+    return { id: `mock_dm_${randomUUID().slice(0, 8)}` };
+  }
 }

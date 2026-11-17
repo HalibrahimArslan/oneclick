@@ -141,6 +141,7 @@ export const reportQuerySchema = z
 
 export const inboxQuerySchema = z.object({
   status: z.enum(['OPEN', 'DONE']).default('OPEN'),
+  kind: z.enum(['COMMENT', 'DM']).optional(),
   accountId: z.string().uuid().optional(),
   assignee: z.enum(['me', 'unassigned']).optional(),
   labelId: z.string().uuid().optional(),

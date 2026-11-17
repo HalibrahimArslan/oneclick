@@ -7,6 +7,8 @@ import {
   type PostMetrics,
   type ProviderComment,
   type ProviderCommentThread,
+  type ProviderDirectMessage,
+  type ProviderDirectThread,
   type ProviderMedia,
   type PublishInput,
   type PublishResult,
@@ -31,9 +33,14 @@ const SCOPES = [
   'instagram_manage_insights',
   // Gelen kutusu: yorumları okuma, yanıtlama, gizleme
   'instagram_manage_comments',
+  // Gelen kutusu: doğrudan mesajlar (Instagram'da "Mesajlara erişime izin ver" açık olmalı)
+  'instagram_manage_messages',
 ];
 
 export const IG_COMMENTS_SCOPE = 'instagram_manage_comments';
+export const IG_MESSAGES_SCOPE = 'instagram_manage_messages';
+/** Meta: kişinin son mesajından sonra yanıt verilebilen süre (standart mesajlaşma penceresi) */
+export const IG_REPLY_WINDOW_MS = 24 * 3600_000;
 
 export const IG_INSIGHTS_SCOPE = 'instagram_manage_insights';
 
@@ -317,5 +324,85 @@ export class InstagramProvider implements SocialProvider {
 
   async setCommentHidden({ accessToken, commentId, hidden }: { accessToken: string; commentId: string; hidden: boolean }) {
     await httpRequest<any>(`${this.graph}/${commentId}`, { method: 'POST', form: { hide: String(hidden), access_token: accessToken } });
+  }
+
+  // ---------- Doğrudan mesajlar (Messenger Platform, Sayfa token'ı ile) ----------
+
+  private pageIdOf(account: PublishInput['account']) {
+    const pageId = account.metadata?.pageId;
+    if (!pageId) throw new ProviderError('Hesabın bağlı olduğu Facebook Sayfası bilinmiyor; hesabı yeniden bağlayın.', { retryable: false, reauth: true });
+    return String(pageId);
+  }
+
+  async listDirectThreads({
+    accessToken,
+    account,
+    since,
+  }: {
+    accessToken: string;
+    account: PublishInput['account'] & { username: string | null };
+    since: Date | null;
+  }): Promise<ProviderDirectThread[]> {
+    const own = (p: { id?: string; username?: string }) =>
+      String(p.id) === account.externalId || (Boolean(p.username) && p.username!.toLowerCase() === account.username?.toLowerCase());
+    const toMessage = (m: any): ProviderDirectMessage => ({
+      id: String(m.id),
+      text: m.message ?? '',
+      timestamp: new Date(m.created_time),
+      fromId: m.from?.id ? String(m.from.id) : null,
+      fromUsername: m.from?.username ?? null,
+      attachments: (m.attachments?.data ?? []).map((a: any) =>
+        a.image_data ? { type: 'image', url: a.image_data.url ?? null } : a.video_data ? { type: 'video', url: a.video_data.url ?? null } : { type: 'other', url: a.file_url ?? null },
+      ),
+    });
+
+    const threads: ProviderDirectThread[] = [];
+    let url: string | null = `${this.graph}/${this.pageIdOf(account)}/conversations`;
+    let query: Record<string, string | number> | undefined = {
+      platform: 'instagram',
+      fields: 'id,updated_time,participants,messages.limit(20){id,created_time,from,message,attachments}',
+      limit: 25,
+      access_token: accessToken,
+    };
+    // Konuşmalar yeniden eskiye gelir; son eşitlemeden eskisine varınca dur (en fazla 4 sayfa)
+    outer: for (let page = 0; url && page < 4; page++) {
+      const res: { data: any } = await httpRequest<any>(url, { query });
+      for (const c of res.data?.data ?? []) {
+        const updatedAt = new Date(c.updated_time);
+        if (since && updatedAt <= since) break outer;
+        const other = (c.participants?.data ?? []).find((p: any) => !own(p));
+        if (!other) continue;
+        threads.push({
+          id: String(c.id),
+          updatedAt,
+          participant: { id: String(other.id), username: other.username ?? null },
+          messages: (c.messages?.data ?? []).map(toMessage),
+        });
+      }
+      url = res.data?.paging?.next ?? null;
+      query = undefined;
+    }
+    return threads;
+  }
+
+  async sendDirectMessage({ accessToken, account, recipientId, text }: { accessToken: string; account: PublishInput['account']; recipientId: string; text: string }) {
+    try {
+      const res = await httpRequest<any>(`${this.graph}/${this.pageIdOf(account)}/messages`, {
+        method: 'POST',
+        query: { access_token: accessToken },
+        json: { recipient: { id: recipientId }, message: { text } },
+      });
+      return { id: String(res.data.message_id) };
+    } catch (err) {
+      // 24 saatlik pencere dışı: Meta hata kodu 10 / alt kod 2018278
+      const e = (err as ProviderError).opts?.body as any;
+      if (e?.error?.error_subcode === 2018278 || /outside of allowed window/i.test((err as Error).message)) {
+        throw new ProviderError('Kişinin son mesajının üzerinden 24 saatten fazla geçti; Instagram bu konuşmaya yanıt vermeye izin vermiyor.', {
+          retryable: false,
+          code: 'ig_window_closed',
+        });
+      }
+      throw err;
+    }
   }
 }

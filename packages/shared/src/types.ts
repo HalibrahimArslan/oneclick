@@ -240,11 +240,21 @@ export interface InboxMessageDto {
   sentAt: string;
   /** Panelden yanıt veren ekip üyesi */
   sentBy: { id: string; name: string } | null;
+  /** Doğrudan mesaj ekleri (görsel, video; desteklenmeyen türlerde url null olabilir) */
+  attachments: { type: 'image' | 'video' | 'other'; url: string | null }[];
 }
+
+/** COMMENT: gönderi altındaki yorum dizisi · DM: doğrudan mesaj konuşması */
+export type ConversationKind = 'COMMENT' | 'DM';
 
 export interface ConversationDto {
   id: string;
+  kind: ConversationKind;
   status: ConversationStatus;
+  /** DM: konuşmadaki kişi */
+  participant: { username: string | null } | null;
+  /** DM: Instagram'ın yanıt vermeye izin verdiği son an (kişinin son mesajı + 24 saat) */
+  replyDeadline: string | null;
   account: { id: string; name: string; username: string | null; avatarUrl: string | null; platform: Platform };
   /** Yorumun yazıldığı gönderi */
   context: { permalink: string | null; caption: string | null; thumbnailUrl: string | null } | null;
@@ -263,8 +273,8 @@ export interface ConversationDetailDto extends ConversationDto {
 export interface InboxDto {
   conversations: ConversationDto[];
   counts: { open: number; mine: number; done: number };
-  /** Yorum okuma izni olmayan Instagram hesapları (yeniden bağlanmalı) */
-  needsReconnect: { id: string; name: string }[];
+  /** Yorum veya mesaj izni eksik Instagram hesapları (yeniden bağlanmalı) */
+  needsReconnect: { id: string; name: string; missing: ('comments' | 'messages')[] }[];
   /** Çalışma alanında yorumları okunabilen hesap var mı */
   hasSupportedAccounts: boolean;
 }
