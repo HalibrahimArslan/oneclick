@@ -456,12 +456,28 @@ export function EmptyState({ icon: Icon, title, body, action, className }: { ico
   );
 }
 
-export const Skeleton = ({ className }: { className?: string }) => <div className={cx('animate-pulse rounded-control bg-subtle', className)} />;
+/** Yükleniyor iskeleti: kayan parlama (index.css .skeleton). Ekran okuyucudan gizlenir; sayfa genelinde tek "Yükleniyor" yeter. */
+export const Skeleton = ({ className }: { className?: string }) => <div aria-hidden className={cx('skeleton rounded-control', className)} />;
 
-export function Spinner({ className }: { className?: string }) {
+/** Tam sayfa yükleniyor göstergesi (oturum kontrolü, gönderi düzenleyici) */
+export function Spinner({ className, label = 'Yükleniyor' }: { className?: string; label?: string }) {
   return (
-    <div className={cx('flex justify-center py-16 text-faint', className)}>
-      <Loader2 className="size-5 animate-spin" />
+    <div role="status" className={cx('loader flex flex-col items-center justify-center gap-3 py-16', className)}>
+      <svg viewBox="0 0 36 36" className="size-9" aria-hidden>
+        <circle cx="18" cy="18" r="15" fill="none" stroke="var(--color-line)" strokeWidth="3" />
+        <circle
+          className="loader-arc"
+          cx="18"
+          cy="18"
+          r="15"
+          fill="none"
+          stroke="var(--color-brand-600)"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeDasharray="28 66"
+        />
+      </svg>
+      <span className="text-caption text-faint">{label}…</span>
     </div>
   );
 }
