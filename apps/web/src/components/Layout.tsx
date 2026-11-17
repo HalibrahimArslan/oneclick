@@ -69,15 +69,17 @@ export function Layout() {
 
   return (
     <div className="flex min-h-full">
-      {/* Masaüstü kenar çubuğu */}
-      <aside
-        className={cx(
-          'sticky top-0 z-20 hidden h-dvh shrink-0 flex-col border-r border-line bg-surface transition-[width] duration-150 md:flex',
-          collapsed ? 'w-16' : 'w-60',
-        )}
-      >
-        <SidebarBody collapsed={collapsed} onToggle={toggle} />
-      </aside>
+      {/* Masaüstü kenar çubuğu: ekran kenarına yapışmayan, yüzen kart */}
+      <div className="sticky top-0 z-20 hidden h-dvh shrink-0 p-3 pr-0 md:block">
+        <aside
+          className={cx(
+            'flex h-full flex-col rounded-card border border-line bg-surface shadow-sm transition-[width] duration-150',
+            collapsed ? 'w-16' : 'w-60',
+          )}
+        >
+          <SidebarBody collapsed={collapsed} onToggle={toggle} />
+        </aside>
+      </div>
 
       {/* Mobil üst çubuk ve çekmece */}
       <div className="fixed inset-x-0 top-0 z-20 flex h-14 items-center gap-2 border-b border-line bg-surface px-3 md:hidden">
