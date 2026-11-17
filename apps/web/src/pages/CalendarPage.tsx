@@ -227,7 +227,7 @@ export function CalendarPage() {
             >
               {picker}
             </Popover>
-            <Select fit aria-label="Durum filtresi" value={status} onChange={(e) => setStatus(e.target.value)} className="h-8 text-small">
+            <Select fit aria-label="Durum filtresi" value={status} onChange={(e) => setStatus(e.target.value)} className="h-8 text-small font-medium">
               {STATUS_FILTERS.map((s) => (
                 <option key={s.value} value={s.value}>
                   {s.label}
