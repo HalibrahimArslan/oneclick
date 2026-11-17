@@ -17,6 +17,7 @@ import { PlatformAppsPage } from './pages/PlatformAppsPage';
 import { ComposerPage } from './pages/ComposerPage';
 import { MediaPage } from './pages/MediaPage';
 import { PostsPage } from './pages/PostsPage';
+import { ReportsPage } from './pages/ReportsPage';
 import { TeamPage } from './pages/TeamPage';
 
 const queryClient = new QueryClient({
@@ -57,6 +58,7 @@ function App() {
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/posts" element={<PostsPage />} />
         <Route path="/media" element={<MediaPage />} />
+        <Route path="/reports" element={<ReportsPage />} />
         <Route path="/accounts" element={<AccountsPage />} />
         <Route path="/clients" element={<ClientsPage />} />
         <Route path="/settings/apps" element={<PlatformAppsPage />} />

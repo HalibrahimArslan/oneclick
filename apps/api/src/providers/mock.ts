@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { AppConfig } from '../config';
 import { ProviderError, sleep } from '../lib/http';
-import type { ConnectedAccountInfo, PublishInput, PublishResult, SocialProvider } from './types';
+import { createHash } from 'node:crypto';
+import type { ConnectedAccountInfo, MetricsInput, PostMetrics, PublishInput, PublishResult, SocialProvider } from './types';
 
 /**
  * Geliştirme için sahte platform. Gerçek API'ye gitmeden bağlama ve yayın akışını dener.
@@ -48,5 +49,20 @@ export class MockProvider implements SocialProvider {
     }
     const id = `mock_${randomUUID().slice(0, 8)}`;
     return { externalPostId: id, permalink: null };
+  }
+
+  /** Demo ve geliştirme için sahte ama tutarlı istatistik: aynı gönderi her seferinde aynı sayıları verir. */
+  async fetchMetrics({ externalPostId }: MetricsInput): Promise<PostMetrics> {
+    const h = createHash('sha256').update(externalPostId).digest();
+    const base = 40 + (h[0] % 160); // 40–200 erişim tabanı
+    const reach = Math.round(base * (2 + (h[1] % 8)));
+    return {
+      reach,
+      views: Math.round(reach * (1.2 + (h[2] % 10) / 10)),
+      likes: Math.round(reach * (0.04 + (h[3] % 8) / 100)),
+      comments: Math.round(reach * (0.004 + (h[4] % 6) / 1000)),
+      saved: Math.round(reach * (h[5] % 4) / 100),
+      shares: Math.round(reach * (h[6] % 3) / 100),
+    };
   }
 }

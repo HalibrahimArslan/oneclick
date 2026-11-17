@@ -20,6 +20,8 @@ import {
   type Platform,
   type PlatformAppDto,
   type PostDto,
+  type PostMetricsDto,
+  type ReportDto,
   type PostStatus,
   type SocialAccountDto,
   type TargetStatus,
@@ -523,6 +525,64 @@ route('POST', `${W}/invites`, () => fail(403, TEAM_DEMO));
 route('DELETE', `${W}/invites/:id`, () => fail(403, TEAM_DEMO));
 route('GET', '/invites/:token', () => fail(404, 'Bu tanıtım sürümünde davet linkleri çalışmaz.'));
 route('POST', '/invites/:token/accept', () => fail(404, 'Bu tanıtım sürümünde davet linkleri çalışmaz.'));
+// Raporlar: gerçek API'deki Mock sağlayıcı gibi, gönderi kimliğinden türetilen tutarlı sahte istatistik
+function demoMetrics(id: string, at: string): PostMetricsDto {
+  let h = 2166136261;
+  for (const ch of id) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+  const byte = (n: number) => (h >>> (n * 4)) & 0xff;
+  const reach = (40 + (byte(0) % 160)) * (2 + (byte(1) % 8));
+  return {
+    reach,
+    views: Math.round(reach * (1.2 + (byte(2) % 10) / 10)),
+    likes: Math.round(reach * (0.04 + (byte(3) % 8) / 100)),
+    comments: Math.round(reach * (0.004 + (byte(4) % 6) / 1000)),
+    saved: Math.round((reach * (byte(5) % 4)) / 100),
+    shares: Math.round((reach * (byte(6) % 3)) / 100),
+    capturedAt: at,
+  };
+}
+
+route('GET', `${W}/reports`, (_m, _b, q): ReportDto => {
+  const st = s();
+  const from = new Date(q.get('from') ?? 0).getTime();
+  const to = new Date(q.get('to') ?? Date.now()).getTime();
+  const brandId = q.get('brandId');
+  const inRange = (v: string | null) => v !== null && new Date(v).getTime() >= from && new Date(v).getTime() < to;
+  const rows: ReportDto['rows'] = [];
+  for (const p of st.posts) {
+    if (brandId && p.brandId !== brandId) continue;
+    for (const t of p.targets) {
+      const published = t.status === 'PUBLISHED' && inRange(t.publishedAt);
+      const failed = t.status === 'FAILED' && inRange(p.scheduledAt);
+      if (!published && !failed) continue;
+      const a = st.accounts.find((x) => x.id === t.socialAccountId);
+      if (!a) continue;
+      const at = (published ? t.publishedAt : p.scheduledAt)!;
+      rows.push({
+        targetId: t.id,
+        postId: p.id,
+        text: (t.textOverride ?? p.text).slice(0, 280),
+        platform: a.platform,
+        account: { id: a.id, name: a.name, username: a.username, avatarUrl: a.avatarUrl },
+        brandId: p.brandId,
+        author: { id: st.user.id, name: st.user.name },
+        status: published ? 'PUBLISHED' : 'FAILED',
+        at,
+        permalink: t.permalink,
+        errorMessage: failed ? t.errorMessage : null,
+        // Demo hesapları tüm istatistikleri verir; birkaç saat sonra gelir gibi davranmak için en yeniler boş
+        metrics: published && t.externalPostId && Date.now() - new Date(at).getTime() > 2 * 3600_000 ? demoMetrics(t.externalPostId, new Date().toISOString()) : null,
+      });
+    }
+  }
+  rows.sort((x, y) => y.at.localeCompare(x.at));
+  return {
+    rows,
+    truncated: false,
+    accounts: st.accounts.filter((a) => a.status !== 'DISCONNECTED').map((a) => ({ id: a.id, name: a.name, platform: a.platform, insights: 'full' as const })),
+  };
+});
+route('POST', `${W}/reports/refresh`, () => ({ checked: 0, updated: 0, failed: 0 }));
 route('POST', `${W}/posts/:id/approve`, () => fail(409, 'Bu gönderi onay beklemiyor'));
 route('POST', `${W}/posts/:id/reject`, () => fail(409, 'Bu gönderi onay beklemiyor'));
 route('GET', `${W}/platforms`, () => (['INSTAGRAM', 'TIKTOK', 'LINKEDIN'] as Platform[]).map((platform) => ({ platform, configured: false })));

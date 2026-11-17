@@ -71,6 +71,26 @@ export interface SocialProvider {
   publish(input: PublishInput): Promise<PublishResult>;
   /** Yayın öncesi platformdan dinamik bilgi (ör. TikTok creator_info) */
   getAccountCapabilities?(input: { accessToken: string; account: PublishInput['account'] }): Promise<Record<string, unknown>>;
+  /** Yayınlanmış gönderinin istatistiği. Platform izin vermiyorsa uygulanmaz. */
+  fetchMetrics?(input: MetricsInput): Promise<PostMetrics>;
+}
+
+export interface MetricsInput {
+  accessToken: string;
+  /** Token'ın izinleri: ek istatistikler (ör. erişim) yalnızca izin varsa istenir */
+  scopes: string[];
+  externalPostId: string;
+  account: PublishInput['account'];
+}
+
+/** Platformun verdiği sayılar; vermediği alan yoktur (0 ile karıştırılmasın) */
+export interface PostMetrics {
+  likes?: number;
+  comments?: number;
+  reach?: number;
+  views?: number;
+  saved?: number;
+  shares?: number;
 }
 
 export type ProviderFactory = (cfg: AppConfig) => SocialProvider;

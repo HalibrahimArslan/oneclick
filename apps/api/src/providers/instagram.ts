@@ -1,6 +1,15 @@
 import type { AppConfig } from '../config';
 import { httpRequest, ProviderError, sleep } from '../lib/http';
-import { type ConnectedAccountInfo, type PlatformAppCredentials, type PublishInput, type PublishResult, type SocialProvider, type TokenSet } from './types';
+import {
+  type ConnectedAccountInfo,
+  type MetricsInput,
+  type PlatformAppCredentials,
+  type PostMetrics,
+  type PublishInput,
+  type PublishResult,
+  type SocialProvider,
+  type TokenSet,
+} from './types';
 
 /**
  * Instagram API with Facebook Login.
@@ -15,7 +24,11 @@ const SCOPES = [
   'pages_read_engagement',
   // Sayfa bir Business portföyündeyse me/accounts onu ancak bu izinle döndürür
   'business_management',
+  // Raporlar: erişim, görüntülenme, kaydetme, paylaşım (beğeni ve yorum instagram_basic ile okunur)
+  'instagram_manage_insights',
 ];
+
+export const IG_INSIGHTS_SCOPE = 'instagram_manage_insights';
 
 export class InstagramProvider implements SocialProvider {
   readonly platform = 'INSTAGRAM' as const;
@@ -219,5 +232,31 @@ export class InstagramProvider implements SocialProvider {
       if (err instanceof ProviderError && err.opts.code === 'ig_quota') throw err;
       /* kota sorgusu başarısızsa yayına devam et */
     }
+  }
+
+  async fetchMetrics({ accessToken, scopes, externalPostId }: MetricsInput): Promise<PostMetrics> {
+    const media = await httpRequest<any>(`${this.graph}/${externalPostId}`, {
+      query: { fields: 'like_count,comments_count,media_product_type', access_token: accessToken },
+    });
+    const out: PostMetrics = {};
+    // Hesap beğeni sayısını gizlemişse like_count gelmez
+    if (typeof media.data.like_count === 'number') out.likes = media.data.like_count;
+    if (typeof media.data.comments_count === 'number') out.comments = media.data.comments_count;
+    if (!scopes.includes(IG_INSIGHTS_SCOPE)) return out;
+
+    // Her medya türü her metriği desteklemez (ör. hikâye); önce tam liste, olmazsa yalnızca erişim
+    for (const metric of ['reach,views,saved,shares', 'reach']) {
+      try {
+        const ins = await httpRequest<any>(`${this.graph}/${externalPostId}/insights`, { query: { metric, access_token: accessToken } });
+        for (const m of ins.data?.data ?? []) {
+          const v = m.values?.[0]?.value ?? m.total_value?.value;
+          if (typeof v === 'number' && ['reach', 'views', 'saved', 'shares'].includes(m.name)) out[m.name as 'reach'] = v;
+        }
+        break;
+      } catch (err) {
+        if (err instanceof ProviderError && err.opts.reauth) throw err;
+      }
+    }
+    return out;
   }
 }

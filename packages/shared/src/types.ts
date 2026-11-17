@@ -177,3 +177,46 @@ export interface InvitePreviewDto {
   role: Role;
   invitedBy: string;
 }
+
+// --- Raporlar ---
+
+/** Platformdan çekilen gönderi istatistiği. Platform vermiyorsa alan yoktur (0 ile karıştırılmasın). */
+export interface PostMetricsDto {
+  likes?: number;
+  comments?: number;
+  /** Gönderiyi gören tekil hesap sayısı (Instagram: instagram_manage_insights izni gerekir) */
+  reach?: number;
+  views?: number;
+  saved?: number;
+  shares?: number;
+  capturedAt: string;
+}
+
+/** Hesap için hangi istatistikler alınabiliyor */
+export type InsightsLevel = 'full' | 'basic' | 'unsupported';
+
+/** Rapordaki tek satır: bir gönderinin bir hesaptaki yayını (başarılı ya da başarısız) */
+export interface ReportRowDto {
+  targetId: string;
+  postId: string;
+  /** Gönderi metninin başı */
+  text: string;
+  platform: Platform;
+  account: { id: string; name: string; username: string | null; avatarUrl: string | null };
+  brandId: string | null;
+  author: { id: string; name: string };
+  status: 'PUBLISHED' | 'FAILED';
+  /** Yayın zamanı; başarısızsa planlanan zaman */
+  at: string;
+  permalink: string | null;
+  errorMessage: string | null;
+  metrics: PostMetricsDto | null;
+}
+
+export interface ReportDto {
+  rows: ReportRowDto[];
+  /** Dönemde gösterilebilecekten fazla yayın varsa true (en yeniler döner) */
+  truncated: boolean;
+  /** Bağlı hesaplar ve istatistik düzeyi (rapor sayfasındaki açıklamalar için) */
+  accounts: { id: string; name: string; platform: Platform; insights: InsightsLevel }[];
+}

@@ -331,6 +331,9 @@ model PostTarget {
   errorCode       String?      @map("error_code")
   errorMessage    String?      @map("error_message")
   publishedAt     DateTime?    @map("published_at")
+  // Platformdan çekilen son istatistik (beğeni, yorum, erişim…); geçmiş anlık görüntüler PostMetric'te
+  lastMetrics     Json?        @map("last_metrics")
+  metricsAt       DateTime?    @map("metrics_at")
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
 
@@ -341,6 +344,7 @@ model PostTarget {
 
   @@unique([postId, socialAccountId])
   @@index([status])
+  @@index([publishedAt])
   @@map("post_targets")
 }
 

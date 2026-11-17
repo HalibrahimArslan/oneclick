@@ -129,3 +129,12 @@ export const approvePostSchema = z.object({
   comment: z.string().trim().max(1000).optional(),
 });
 
+
+export const reportQuerySchema = z
+  .object({
+    from: z.string().datetime(),
+    to: z.string().datetime(),
+    brandId: z.string().uuid().optional(),
+  })
+  .refine((q) => new Date(q.to) > new Date(q.from), { message: 'Bitiş tarihi başlangıçtan sonra olmalı' })
+  .refine((q) => new Date(q.to).getTime() - new Date(q.from).getTime() <= 400 * 864e5, { message: 'Rapor dönemi en fazla 400 gün olabilir' });

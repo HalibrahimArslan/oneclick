@@ -1,4 +1,5 @@
 import {
+  BarChart3,
   CalendarDays,
   Check,
   ChevronsUpDown,
@@ -34,6 +35,7 @@ const NAV: { group: string; items: { to: string; label: string; icon: LucideIcon
       { to: '/calendar', label: 'Takvim', icon: CalendarDays },
       { to: '/posts', label: 'Gönderiler', icon: LayoutList },
       { to: '/media', label: 'Medya', icon: Image },
+      { to: '/reports', label: 'Raporlar', icon: BarChart3 },
     ],
   },
   {

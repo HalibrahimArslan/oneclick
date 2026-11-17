@@ -11,6 +11,7 @@ import { AuthController } from './modules/auth.controller';
 import { BrandingController } from './modules/branding.controller';
 import { MediaController } from './modules/media.controller';
 import { PostsController } from './modules/posts.controller';
+import { ReportsController } from './modules/reports.controller';
 import { InvitesController, TeamController } from './modules/team.controller';
 import { WorkspacesController } from './modules/workspaces.controller';
 
@@ -46,6 +47,7 @@ const statics = [
     BrandingController,
     TeamController,
     InvitesController,
+    ReportsController,
     AccountsController,
     OAuthController,
     MediaController,
