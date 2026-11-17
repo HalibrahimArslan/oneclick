@@ -1,4 +1,4 @@
-import { AlertCircle, AlertTriangle, CheckCircle2, Info, Loader2, X, type LucideIcon } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, Info, Loader2, X, type LucideIcon } from 'lucide-react';
 import {
   useCallback,
   useEffect,
@@ -114,8 +114,13 @@ export const Textarea = (p: TextareaHTMLAttributes<HTMLTextAreaElement>) => (
   <textarea {...p} className={cx(control, 'w-full py-2.5 leading-relaxed', p.className)} />
 );
 
+// Tarayıcının kendi oku kenara yapışık ve her işletim sisteminde farklı; onun yerine
+// diğer açılır butonlarla aynı ChevronDown ikonu kullanılır.
 export const Select = ({ fit, ...p }: SelectHTMLAttributes<HTMLSelectElement> & { fit?: boolean }) => (
-  <select {...p} className={cx(control, fit ? 'w-auto' : 'w-full', 'h-9 pr-8', p.className)} />
+  <span className={cx('relative inline-flex', fit ? 'w-auto' : 'w-full')}>
+    <select {...p} className={cx(control, 'h-9 w-full cursor-pointer appearance-none pr-8', p.className)} />
+    <ChevronDown className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-faint" strokeWidth={1.75} aria-hidden />
+  </span>
 );
 
 export function Checkbox({
