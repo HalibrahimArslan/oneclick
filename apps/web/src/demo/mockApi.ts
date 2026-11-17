@@ -7,6 +7,7 @@
  * "yayınlandı" olur, hiçbir şey gerçek platformlara gitmez.
  */
 import {
+  DEFAULT_APP_NAME,
   hasErrors,
   instagramOptionsSchema,
   reschedulePostSchema,
@@ -477,7 +478,12 @@ const route = (method: string, pattern: string, fn: Handler) =>
 const W = '/workspaces/:wid';
 
 // Kimlik
-route('GET', '/auth/config', () => ({ registrationOpen: false, demoMode: true, demoTtlHours: TTL_HOURS }));
+route('GET', '/auth/config', () => ({
+  registrationOpen: false,
+  demoMode: true,
+  demoTtlHours: TTL_HOURS,
+  branding: { appName: DEFAULT_APP_NAME, color: null, logoUrl: null },
+}));
 route('POST', '/auth/demo', () => {
   state = seed();
   save();
@@ -516,6 +522,13 @@ route('GET', `${W}/platform-apps`, (): PlatformAppDto[] =>
 );
 route('PUT', `${W}/platform-apps/:p`, () => fail(403, 'Demo hesabında platform uygulaması eklenemez.'));
 route('DELETE', `${W}/platform-apps/:p`, () => fail(403, 'Demo hesabında platform uygulaması eklenemez.'));
+
+// Beyaz etiket: gerçek API'de de demo çalışma alanlarında kapalı
+const BRANDING_DEMO = 'Demo hesabında marka değiştirilemez.';
+route('GET', `${W}/branding`, () => fail(403, BRANDING_DEMO));
+route('PUT', `${W}/branding`, () => fail(403, BRANDING_DEMO));
+route('POST', `${W}/branding/logo`, () => fail(403, BRANDING_DEMO));
+route('DELETE', `${W}/branding/logo`, () => fail(403, BRANDING_DEMO));
 
 // Müşteriler
 route('GET', `${W}/brands`, (): BrandDto[] =>

@@ -156,7 +156,7 @@ function DetailActions({ post, onDone }: { post: PostDto; onDone(): void }) {
       title: 'Gönderi silinsin mi?',
       body:
         post.status === 'PUBLISHED' || post.status === 'PARTIALLY_FAILED'
-          ? 'Gönderi OneClick’ten silinir. Platformlarda yayınlanmış paylaşımlar yerinde kalır.'
+          ? 'Gönderi panelden silinir. Platformlarda yayınlanmış paylaşımlar yerinde kalır.'
           : 'Bu işlem geri alınamaz.',
       action: 'Sil',
       danger: true,

@@ -8,6 +8,7 @@ import {
   LayoutList,
   LogOut,
   Menu,
+  Palette,
   PanelLeftClose,
   PanelLeftOpen,
   Plug,
@@ -20,11 +21,12 @@ import {
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
+import { useBranding } from '../lib/branding';
 import { readLocal, writeLocal } from '../lib/storage';
 import { Avatar } from './identity';
 import { cx, IconButton, MenuItem, Popover } from './ui';
 
-const NAV: { group: string; items: { to: string; label: string; icon: LucideIcon }[] }[] = [
+const NAV: { group: string; items: { to: string; label: string; icon: LucideIcon; ownerOnly?: boolean }[] }[] = [
   {
     group: 'Yayın',
     items: [
@@ -39,11 +41,15 @@ const NAV: { group: string; items: { to: string; label: string; icon: LucideIcon
       { to: '/accounts', label: 'Hesaplar', icon: Plug },
       { to: '/clients', label: 'Müşteriler', icon: Briefcase },
       { to: '/settings/apps', label: 'Platform uygulamaları', icon: KeyRound },
+      { to: '/settings/branding', label: 'Marka', icon: Palette, ownerOnly: true },
     ],
   },
 ];
 
+/** Kurulumun logosu: yüklenmişse o görsel, yoksa ana renkte varsayılan işaret */
 export function Logo({ size = 28 }: { size?: number }) {
+  const { logoUrl } = useBranding();
+  if (logoUrl) return <img src={logoUrl} alt="" className="shrink-0 rounded-control object-contain" style={{ width: size, height: size }} aria-hidden />;
   return (
     <span className="flex shrink-0 items-center justify-center rounded-control bg-brand-600" style={{ width: size, height: size }} aria-hidden>
       <span className="rounded-full bg-surface" style={{ width: size * 0.36, height: size * 0.36 }} />
@@ -58,6 +64,7 @@ export function Layout() {
   const [drawer, setDrawer] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  const { appName } = useBranding();
 
   useEffect(() => setDrawer(false), [location.pathname]);
   const toggle = () => {
@@ -85,7 +92,7 @@ export function Layout() {
       <div className="fixed inset-x-0 top-0 z-20 flex h-14 items-center gap-2 border-b border-line bg-surface px-3 md:hidden">
         <IconButton icon={Menu} label="Menüyü aç" onClick={() => setDrawer(true)} />
         <Logo size={24} />
-        <span className="flex-1 text-heading font-semibold tracking-tight">OneClick</span>
+        <span className="flex-1 truncate text-heading font-semibold tracking-tight">{appName}</span>
         <IconButton icon={Plus} label="Gönderi oluştur" primary onClick={() => navigate('/compose')} />
       </div>
       {drawer && (
@@ -126,6 +133,7 @@ function DemoBanner() {
 function SidebarBody({ collapsed, onToggle }: { collapsed: boolean; onToggle?(): void }) {
   const { user, workspace, workspaces, selectWorkspace, logout } = useAuth();
   const navigate = useNavigate();
+  const { appName } = useBranding();
 
   return (
     <>
@@ -148,7 +156,7 @@ function SidebarBody({ collapsed, onToggle }: { collapsed: boolean; onToggle?():
               {!collapsed && (
                 <>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-small font-semibold">OneClick</span>
+                    <span className="block truncate text-small font-semibold">{appName}</span>
                     <span className="block truncate text-caption text-muted">{workspace?.name}</span>
                   </span>
                   {workspaces.length > 1 && <ChevronsUpDown className="size-4 text-faint" />}
@@ -195,7 +203,7 @@ function SidebarBody({ collapsed, onToggle }: { collapsed: boolean; onToggle?():
         {NAV.map((g) => (
           <div key={g.group} className={cx('mb-4 px-3', collapsed && 'px-2')}>
             {!collapsed && <p className="mb-1 px-2.5 text-micro font-medium text-faint">{g.group}</p>}
-            {g.items.map(({ to, label, icon: Icon }) => (
+            {g.items.filter((i) => !i.ownerOnly || workspace?.role === 'OWNER').map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}
                 to={to}

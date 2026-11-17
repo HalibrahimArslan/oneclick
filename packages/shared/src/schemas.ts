@@ -33,6 +33,18 @@ export const savePlatformAppSchema = z.object({
 });
 export type SavePlatformAppInput = z.infer<typeof savePlatformAppSchema>;
 
+/** Beyaz etiket: kurulumun adı ve ana rengi. null → varsayılana (OneClick, indigo) dön. Logo ayrı yüklenir. */
+export const updateBrandingSchema = z.object({
+  appName: z.string().trim().min(1, 'Uygulama adı gerekli').max(40).nullable(),
+  color: z
+    .string()
+    .trim()
+    .regex(/^#[0-9a-fA-F]{6}$/, 'Renk #RRGGBB biçiminde olmalı')
+    .transform((c) => c.toLowerCase())
+    .nullable(),
+});
+export type UpdateBrandingInput = z.infer<typeof updateBrandingSchema>;
+
 export const instagramOptionsSchema = z.object({
   postType: z.enum(INSTAGRAM_POST_TYPES).default('FEED'),
 });

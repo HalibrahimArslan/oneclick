@@ -102,3 +102,16 @@ export interface PostDto {
   media: MediaAssetDto[];
   targets: PostTargetDto[];
 }
+
+/** Beyaz etiket: tüm kurulum için geçerli marka. Giriş ekranı dahil her yerde kullanılır. */
+export const DEFAULT_APP_NAME = 'OneClick';
+export const DEFAULT_BRAND_COLOR = '#4b4fe0';
+
+export interface BrandingDto {
+  /** Her zaman dolu: özel ad yoksa DEFAULT_APP_NAME */
+  appName: string;
+  /** #rrggbb; null ise varsayılan indigo */
+  color: string | null;
+  /** Yüklenen logo (favicon olarak da kullanılır); null ise varsayılan logo */
+  logoUrl: string | null;
+}

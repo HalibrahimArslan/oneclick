@@ -8,6 +8,7 @@ import { CoreModule } from './common/core';
 import { LOCAL_UPLOAD_DIR } from './core/storage';
 import { AccountsController, OAuthController } from './modules/accounts.controller';
 import { AuthController } from './modules/auth.controller';
+import { BrandingController } from './modules/branding.controller';
 import { MediaController } from './modules/media.controller';
 import { PostsController } from './modules/posts.controller';
 import { WorkspacesController } from './modules/workspaces.controller';
@@ -41,6 +42,7 @@ const statics = [
     HealthController,
     AuthController,
     WorkspacesController,
+    BrandingController,
     AccountsController,
     OAuthController,
     MediaController,

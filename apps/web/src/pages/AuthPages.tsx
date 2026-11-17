@@ -5,11 +5,12 @@ import { PlatformIcon } from '../components/identity';
 import { Logo } from '../components/Layout';
 import { Button, cx, Field, Input, Notice } from '../components/ui';
 import { useAuth } from '../lib/auth';
+import { useBranding } from '../lib/branding';
 import { useAuthConfig } from '../lib/queries';
 
-const PROMISES = [
+const promises = (appName: string) => [
   { icon: Layers, title: 'Bir kez yazın', body: 'Instagram, TikTok ve LinkedIn için tek metin, hesaba göre ince ayar.' },
-  { icon: CalendarCheck2, title: 'Takvimde planlayın', body: 'Sürükleyip bırakın, zamanı gelince OneClick yayınlasın.' },
+  { icon: CalendarCheck2, title: 'Takvimde planlayın', body: `Sürükleyip bırakın, zamanı gelince ${appName} yayınlasın.` },
   { icon: Eye, title: 'Yayınlamadan görün', body: 'Her platformda nasıl görüneceğini önceden kontrol edin.' },
 ];
 
@@ -23,6 +24,7 @@ const MINI = [
 ];
 
 function Shell({ title, subtitle, children, footer }: { title: string; subtitle: string; children: ReactNode; footer: ReactNode }) {
+  const { appName } = useBranding();
   return (
     <div className="flex min-h-screen bg-surface lg:flex-row-reverse">
       {/* Form DOM'da önce gelir (klavye sırası), görselde sağda durur */}
@@ -30,7 +32,7 @@ function Shell({ title, subtitle, children, footer }: { title: string; subtitle:
         <div className="w-full max-w-md">
           <div className="mb-10 flex items-center gap-2.5">
             <Logo size={30} />
-            <span className="text-heading font-semibold tracking-tight">OneClick</span>
+            <span className="text-heading font-semibold tracking-tight">{appName}</span>
           </div>
           <h1 className="text-[26px] leading-8 font-semibold tracking-tight">{title}</h1>
           <p className="mt-1.5 mb-8 text-body text-muted">{subtitle}</p>
@@ -47,7 +49,7 @@ function Shell({ title, subtitle, children, footer }: { title: string; subtitle:
             Tüm sosyal hesaplarınız, tek takvimde.
           </h2>
           <ul className="grid gap-6 xl:gap-7">
-            {PROMISES.map(({ icon: Icon, title: t, body }) => (
+            {promises(appName).map(({ icon: Icon, title: t, body }) => (
               <li key={t} className="flex gap-4">
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-card bg-white/12 text-white">
                   <Icon className="size-5" strokeWidth={1.75} />

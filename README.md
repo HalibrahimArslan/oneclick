@@ -267,7 +267,7 @@ Vercel'de repoyu içe aktarmanız yeterli. Kök dizindeki `vercel.json` kurulum 
 - [x] Takvim, zamanlı yayın, otomatik tekrar deneme
 - [x] Medya kütüphanesi, workspace, marka ve roller
 - [ ] Tek komutla kurulum (Docker + otomatik HTTPS)
-- [ ] Beyaz etiket: kendi logonuz, adınız ve renkleriniz
+- [x] Beyaz etiket: kendi logonuz, adınız ve renkleriniz
 - [ ] Onay akışı ve ekip davetleri
 - [ ] Raporlar ve gönderi istatistikleri
 - [ ] Birleşik gelen kutusu: yorum ve mesajlar tek ekranda

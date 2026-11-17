@@ -66,7 +66,7 @@ export function AccountsPage() {
   const disconnect = async (a: AccountRow) => {
     const ok = await confirm({
       title: `${a.name} bağlantısı kaldırılsın mı?`,
-      body: 'Bu hesaba planlanmış gönderiler yayınlanmaz. Geçmiş gönderiler OneClick’te kalır.',
+      body: 'Bu hesaba planlanmış gönderiler yayınlanmaz. Geçmiş gönderiler panelde kalır.',
       action: 'Bağlantıyı kaldır',
       danger: true,
     });

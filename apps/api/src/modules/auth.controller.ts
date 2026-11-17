@@ -15,11 +15,16 @@ const REFRESH_TTL_MS = 30 * 864e5;
 export class AuthController {
   constructor(@InjectContainer() private readonly c: Container) {}
 
-  /** Giriş ekranı için: kayıt açık mı (ilk kullanıcı her zaman kayıt olabilir) */
+  /** Giriş ekranı için: kayıt açık mı (ilk kullanıcı her zaman kayıt olabilir), marka */
   @Public()
   @Get('config')
   async config() {
-    return { registrationOpen: await this.registrationOpen(), demoMode: this.c.cfg.DEMO_MODE, demoTtlHours: this.c.cfg.DEMO_TTL_HOURS };
+    return {
+      registrationOpen: await this.registrationOpen(),
+      demoMode: this.c.cfg.DEMO_MODE,
+      demoTtlHours: this.c.cfg.DEMO_TTL_HOURS,
+      branding: await this.c.branding.get(),
+    };
   }
 
   /** "Demoyu dene": örnek verili geçici çalışma alanı açar ve oturum başlatır. */

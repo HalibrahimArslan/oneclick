@@ -200,10 +200,11 @@ export class OAuthController {
   /** Mock platform için sahte izin ekranı (yalnızca ENABLE_MOCK_PROVIDER=true iken). */
   @Public()
   @Get('mock-authorize')
-  mockAuthorize(@Query('state') state: string, @Query('redirect_uri') redirectUri: string, @Res() res: Response) {
+  async mockAuthorize(@Query('state') state: string, @Query('redirect_uri') redirectUri: string, @Res() res: Response) {
     if (!this.c.cfg.ENABLE_MOCK_PROVIDER) return res.status(404).send('Not found');
     if (!redirectUri?.startsWith(this.c.cfg.API_PUBLIC_URL)) return res.status(400).send('Geçersiz yönlendirme');
     const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+    const app = esc(await this.c.branding.appName());
     res.type('html').send(`<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Test platformu – izin</title>
 <style>body{font-family:system-ui,sans-serif;background:#f4f4f5;display:grid;place-items:center;min-height:100vh;margin:0}
@@ -211,8 +212,8 @@ form{background:#fff;padding:28px;border-radius:12px;box-shadow:0 1px 3px #0002;
 h1{font-size:18px;margin:0 0 8px}p{color:#555;font-size:14px}input{width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;box-sizing:border-box}
 button{margin-top:16px;width:100%;padding:10px;border:0;border-radius:6px;background:#111;color:#fff;font-weight:600;cursor:pointer}</style></head>
 <body><form method="get" action="${esc(redirectUri)}">
-<h1>OneClick hesabınıza erişmek istiyor</h1>
-<p>Bu, gerçek platform yerine kullanılan test ekranıdır. İzin verirseniz OneClick bu hesapta gönderi paylaşabilir.</p>
+<h1>${app} hesabınıza erişmek istiyor</h1>
+<p>Bu, gerçek platform yerine kullanılan test ekranıdır. İzin verirseniz ${app} bu hesapta gönderi paylaşabilir.</p>
 <label>Hesap adı<input name="code_name" value="Test Hesabı" oninput="this.form.code.value='mock:'+encodeURIComponent(this.value)"></label>
 <input type="hidden" name="code" value="mock:Test%20Hesab%C4%B1"><input type="hidden" name="state" value="${esc(state)}">
 <button type="submit">İzin ver</button></form></body></html>`);

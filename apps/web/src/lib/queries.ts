@@ -1,4 +1,4 @@
-import type { BrandDto, MediaAssetDto, Platform, PlatformAppDto, PostDto, SocialAccountDto } from '@oneclick/shared';
+import type { BrandDto, BrandingDto, MediaAssetDto, Platform, PlatformAppDto, PostDto, SocialAccountDto } from '@oneclick/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ws } from './api';
 import { useAuth } from './auth';
@@ -31,11 +31,11 @@ export function usePlatformApps() {
   return useQuery({ queryKey: ['platform-apps', w], queryFn: () => api<PlatformAppDto[]>(ws('/platform-apps')) });
 }
 
-/** Giriş ekranı için: kayıt açık mı, demo modu var mı */
+/** Giriş ekranı için: kayıt açık mı, demo modu var mı; ayrıca kurulumun markası (beyaz etiket) */
 export function useAuthConfig() {
   return useQuery({
     queryKey: ['auth-config'],
-    queryFn: () => api<{ registrationOpen: boolean; demoMode: boolean; demoTtlHours: number }>('/auth/config'),
+    queryFn: () => api<{ registrationOpen: boolean; demoMode: boolean; demoTtlHours: number; branding: BrandingDto }>('/auth/config'),
     staleTime: 5 * 60_000,
   });
 }

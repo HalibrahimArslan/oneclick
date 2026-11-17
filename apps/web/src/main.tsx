@@ -7,7 +7,9 @@ import { Layout } from './components/Layout';
 import { Spinner } from './components/ui';
 import './index.css';
 import { AuthProvider, useAuth } from './lib/auth';
+import { BrandingEffects } from './lib/branding';
 import { AccountsPage } from './pages/AccountsPage';
+import { BrandingPage } from './pages/BrandingPage';
 import { LoginPage, RegisterPage } from './pages/AuthPages';
 import { CalendarPage } from './pages/CalendarPage';
 import { ClientsPage } from './pages/ClientsPage';
@@ -55,6 +57,7 @@ function App() {
         <Route path="/accounts" element={<AccountsPage />} />
         <Route path="/clients" element={<ClientsPage />} />
         <Route path="/settings/apps" element={<PlatformAppsPage />} />
+        <Route path="/settings/branding" element={<BrandingPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/calendar" replace />} />
     </Routes>
@@ -64,6 +67,7 @@ function App() {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
+      <BrandingEffects />
       <BrowserRouter>
         <AuthProvider>
           <FeedbackProvider>
