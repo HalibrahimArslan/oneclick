@@ -1,11 +1,11 @@
 import { ROLE_LABELS, type CreatedInviteDto, type MemberDto, type Role } from '@oneclick/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { Check, Copy, Link2, LogOut, Trash2, UserPlus } from 'lucide-react';
+import { BadgeCheck, Check, Copy, Crown, Eye, Link2, LogOut, Minus, PenLine, ShieldCheck, Trash2, UserPlus, type LucideIcon } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFeedback } from '../components/feedback';
 import { Avatar } from '../components/identity';
-import { Button, Card, Field, IconButton, Input, Modal, Notice, PageHeader, Select, Skeleton, Switch } from '../components/ui';
+import { Button, Card, cx, Field, IconButton, Input, Modal, Notice, PageHeader, Select, Skeleton, Switch } from '../components/ui';
 import { api, ws } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { fmtLong } from '../lib/format';
@@ -13,13 +13,44 @@ import { useInvites, useMembers } from '../lib/queries';
 
 const ASSIGNABLE: Exclude<Role, 'OWNER'>[] = ['ADMIN', 'EDITOR', 'APPROVER', 'VIEWER'];
 
-const ROLE_HELP: Record<Role, string> = {
-  OWNER: 'Her şey; marka ve çalışma alanı sahipliği dahil',
-  ADMIN: 'Her şey; ekip, hesaplar ve ayarlar dahil',
-  EDITOR: 'Gönderi hazırlar ve planlar (onay açıksa onaya gönderir)',
-  APPROVER: 'Gönderileri onaylar veya reddeder; düzenleyemez',
-  VIEWER: 'Yalnızca görüntüler',
+const ROLES: Role[] = ['OWNER', 'ADMIN', 'EDITOR', 'APPROVER', 'VIEWER'];
+
+const ROLE_META: Record<Role, { icon: LucideIcon; help: string }> = {
+  OWNER: { icon: Crown, help: 'Her şey; marka ve çalışma alanı sahipliği dahil' },
+  ADMIN: { icon: ShieldCheck, help: 'Her şey; ekip, hesaplar ve ayarlar dahil' },
+  EDITOR: { icon: PenLine, help: 'Gönderi hazırlar ve planlar, yorumları yanıtlar' },
+  APPROVER: { icon: BadgeCheck, help: 'Gönderileri onaylar veya reddeder; düzenleyemez' },
+  VIEWER: { icon: Eye, help: 'Her şeyi görür, hiçbir şeyi değiştiremez' },
 };
+const ROLE_HELP = Object.fromEntries(ROLES.map((r) => [r, ROLE_META[r].help])) as Record<Role, string>;
+
+/**
+ * Yetki tablosu: API'deki MinRole ve canApprove/canPublishDirectly kurallarının özeti.
+ * Bir uç noktanın rolü değişirse burası da güncellenmeli.
+ * Hücre: true = var, false = yok, string = koşullu (kısa not).
+ */
+type Cell = boolean | string;
+function permissions(approvalRequired: boolean): { label: string; cells: Record<Role, Cell> }[] {
+  const all = (v: Cell): Record<Role, Cell> => ({ OWNER: v, ADMIN: v, EDITOR: v, APPROVER: v, VIEWER: v });
+  return [
+    { label: 'Takvim, gönderiler, raporlar ve yorumları görme', cells: all(true) },
+    {
+      label: 'Gönderi hazırlama, planlama ve medya yükleme',
+      cells: { ...all(false), OWNER: true, ADMIN: true, EDITOR: approvalRequired ? 'Onaya gönderir' : true },
+    },
+    { label: 'Onay beklemeden yayınlama', cells: { ...all(false), OWNER: true, ADMIN: true, EDITOR: approvalRequired ? false : 'Onay kapalıyken' } },
+    { label: 'Gönderi onaylama ve reddetme', cells: { ...all(false), OWNER: true, ADMIN: true, APPROVER: true } },
+    { label: 'Yorumları yanıtlama, gizleme ve atama', cells: { ...all(false), OWNER: true, ADMIN: true, EDITOR: true } },
+    { label: 'Hesaplar, müşteriler, platform uygulamaları ve onay ayarı', cells: { ...all(false), OWNER: true, ADMIN: true } },
+    { label: 'Ekibi yönetme ve davet etme', cells: { ...all(false), OWNER: true, ADMIN: true } },
+    { label: 'Marka (ad, logo, renk)', cells: { ...all(false), OWNER: true } },
+  ];
+}
+
+function RoleIcon({ role, className }: { role: Role; className?: string }) {
+  const Icon = ROLE_META[role].icon;
+  return <Icon className={cx('size-3.5 shrink-0', className)} strokeWidth={2} aria-hidden />;
+}
 
 export function TeamPage() {
   const { workspace } = useAuth();
@@ -33,6 +64,7 @@ export function TeamPage() {
       <ApprovalSetting canManage={canManage} />
       <Members canManage={canManage && !isDemo} />
       {canManage && !isDemo && <Invites />}
+      <RolesTable />
     </div>
   );
 }
@@ -103,7 +135,12 @@ function Members({ canManage }: { canManage: boolean }) {
     const ok = await confirm(
       self
         ? { title: 'Çalışma alanından ayrılınsın mı?', body: 'Bu çalışma alanına yeniden erişmek için yeni bir davet gerekir.', action: 'Ayrıl', danger: true }
-        : { title: `${m.name} çıkarılsın mı?`, body: 'Çalışma alanına erişimi hemen kapanır. Hazırladığı gönderiler yerinde kalır.', action: 'Çıkar', danger: true },
+        : {
+            title: `${m.name} çıkarılsın mı?`,
+            body: 'Çalışma alanına erişimi hemen kapanır. Hazırladığı gönderiler yerinde kalır.',
+            action: 'Çıkar',
+            danger: true,
+          },
     );
     if (!ok) return;
     if (self) {
@@ -140,59 +177,134 @@ function Members({ canManage }: { canManage: boolean }) {
             const editable = canManage && (m.role !== 'OWNER' || (isOwner && ownerCount > 1));
             const lastOwner = m.role === 'OWNER' && ownerCount <= 1;
             return (
-              <li key={m.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                <Avatar name={m.name} size={32} />
+              <li key={m.id} className="flex flex-wrap items-center gap-3 px-4 py-3.5">
+                <Avatar name={m.name} size={36} />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-body font-medium">
-                    {m.name}
-                    {self && <span className="font-normal text-muted"> (siz)</span>}
+                  <p className="flex min-w-0 items-center gap-2 text-body font-medium">
+                    <span className="truncate">{m.name}</span>
+                    {self && <span className="shrink-0 rounded-full bg-brand-50 px-2 py-0.5 text-micro font-semibold text-brand-700">Siz</span>}
                   </p>
                   <p className="truncate text-caption text-muted">{m.email}</p>
                 </div>
                 {editable ? (
-                  <Select
-                    fit
-                    aria-label={`${m.name} rolü`}
-                    value={m.role === 'OWNER' ? '' : m.role}
-                    disabled={busyId === m.id}
-                    onChange={(e) => changeRole(m, e.target.value as Role)}
-                    className="h-8 text-small"
-                    title={ROLE_HELP[m.role]}
-                  >
-                    {m.role === 'OWNER' && (
-                      <option value="" disabled>
-                        Sahip
-                      </option>
-                    )}
-                    {ASSIGNABLE.map((r) => (
-                      <option key={r} value={r}>
-                        {ROLE_LABELS[r]}
-                      </option>
-                    ))}
-                  </Select>
+                  <div className="flex items-center gap-1.5 text-muted">
+                    <RoleIcon role={m.role} />
+                    <Select
+                      fit
+                      aria-label={`${m.name} rolü`}
+                      value={m.role === 'OWNER' ? '' : m.role}
+                      disabled={busyId === m.id}
+                      onChange={(e) => changeRole(m, e.target.value as Role)}
+                      className="h-8 text-small font-medium"
+                      title={ROLE_HELP[m.role]}
+                    >
+                      {m.role === 'OWNER' && (
+                        <option value="" disabled>
+                          Sahip
+                        </option>
+                      )}
+                      {ASSIGNABLE.map((r) => (
+                        <option key={r} value={r}>
+                          {ROLE_LABELS[r]}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
                 ) : (
-                  <span className="rounded-full bg-subtle px-2.5 py-1 text-caption font-medium text-ink-2" title={ROLE_HELP[m.role]}>
-                    {ROLE_LABELS[m.role]}
-                  </span>
+                  <RoleChip role={m.role} />
                 )}
                 {self
-                  ? !lastOwner && (
-                      <IconButton icon={LogOut} size="sm" label="Çalışma alanından ayrıl" disabled={busyId === m.id} onClick={() => remove(m)} />
-                    )
-                  : editable && <IconButton icon={Trash2} size="sm" label={`${m.name} adlı üyeyi çıkar`} disabled={busyId === m.id} onClick={() => remove(m)} />}
+                  ? !lastOwner && <IconButton icon={LogOut} size="sm" label="Çalışma alanından ayrıl" disabled={busyId === m.id} onClick={() => remove(m)} />
+                  : editable && (
+                      <IconButton icon={Trash2} size="sm" label={`${m.name} adlı üyeyi çıkar`} disabled={busyId === m.id} onClick={() => remove(m)} />
+                    )}
               </li>
             );
           })}
         </ul>
       )}
-      <dl className="grid gap-x-4 gap-y-1 border-t border-line px-4 py-3 text-caption sm:grid-cols-[auto_1fr]">
-        {(Object.keys(ROLE_HELP) as Role[]).map((r) => (
-          <div key={r} className="contents">
-            <dt className="font-medium text-ink-2">{ROLE_LABELS[r]}</dt>
-            <dd className="text-muted">{ROLE_HELP[r]}</dd>
-          </div>
-        ))}
-      </dl>
+    </Card>
+  );
+}
+
+function RoleChip({ role }: { role: Role }) {
+  return (
+    <span
+      className={cx(
+        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-caption font-medium',
+        role === 'OWNER' ? 'bg-brand-50 text-brand-700' : 'bg-subtle text-ink-2',
+      )}
+      title={ROLE_HELP[role]}
+    >
+      <RoleIcon role={role} />
+      {ROLE_LABELS[role]}
+    </span>
+  );
+}
+
+/** Rollerin yetkileri: satırlar yetki, sütunlar rol; kullanıcının kendi rolü vurgulanır */
+function RolesTable() {
+  const { workspace } = useAuth();
+  const mine = workspace?.role;
+  const rows = permissions(Boolean(workspace?.approvalRequired));
+  const col = (r: Role) => (r === mine ? 'bg-brand-50/60' : '');
+
+  return (
+    <Card title="Roller ve yetkiler">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-160 table-fixed border-collapse text-small">
+          <caption className="sr-only">Her rolün çalışma alanında yapabildikleri</caption>
+          <thead>
+            <tr className="border-b border-line">
+              <th scope="col" className="w-[34%] px-4 py-3 text-left align-bottom text-caption font-medium text-muted">
+                Yetki
+              </th>
+              {ROLES.map((r) => (
+                <th key={r} scope="col" className={cx('px-2 py-3 text-center align-bottom', col(r))}>
+                  <span className="flex flex-col items-center gap-1">
+                    <span
+                      className={cx('flex size-7 items-center justify-center rounded-full', r === mine ? 'bg-brand-600 text-white' : 'bg-subtle text-ink-2')}
+                    >
+                      <RoleIcon role={r} className="size-4" />
+                    </span>
+                    <span className="text-small font-semibold text-ink">{ROLE_LABELS[r]}</span>
+                    {r === mine && <span className="text-micro font-medium text-brand-700">Sizin rolünüz</span>}
+                  </span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {rows.map((row) => (
+              <tr key={row.label}>
+                <th scope="row" className="px-4 py-2.5 text-left font-normal text-ink-2">
+                  {row.label}
+                </th>
+                {ROLES.map((r) => {
+                  const v = row.cells[r];
+                  return (
+                    <td key={r} className={cx('px-2 py-2.5 text-center', col(r))}>
+                      {v === true ? (
+                        <Check className="mx-auto size-4 text-brand-600" strokeWidth={2.5} aria-label="Var" />
+                      ) : v === false ? (
+                        <Minus className="mx-auto size-4 text-line-strong" aria-label="Yok" />
+                      ) : (
+                        <span className="inline-block rounded-full bg-subtle px-2 py-0.5 text-micro font-medium whitespace-nowrap text-ink-2">
+                          {v}
+                        </span>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="border-t border-line px-4 py-3 text-caption text-muted">
+        Sahiplerin rolünü yalnızca başka bir Sahip değiştirebilir; çalışma alanında her zaman en az bir Sahip kalır.
+        {workspace?.approvalRequired ? ' Gönderi onayı açık: Editörlerin gönderileri onaylandıktan sonra yayınlanır.' : ''}
+      </p>
     </Card>
   );
 }
@@ -325,8 +437,8 @@ function CreateInviteModal({ open, onClose }: { open: boolean; onClose(): void }
       {created ? (
         <div className="space-y-3">
           <p className="text-small text-muted">
-            Bu linki davet ettiğiniz kişiye iletin (e-posta, WhatsApp vb.). <strong className="font-semibold text-ink-2">Link yalnızca şimdi gösterilir</strong>; 7
-            gün geçerlidir ve tek kişi kullanabilir.
+            Bu linki davet ettiğiniz kişiye iletin (e-posta, WhatsApp vb.). <strong className="font-semibold text-ink-2">Link yalnızca şimdi gösterilir</strong>
+            ; 7 gün geçerlidir ve tek kişi kullanabilir.
           </p>
           <div className="flex items-center gap-1.5 rounded-control border border-line bg-canvas py-1 pr-1 pl-2.5">
             <code className="min-w-0 flex-1 truncate text-caption text-ink-2" title={link}>
