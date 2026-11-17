@@ -76,7 +76,7 @@ export function PlatformAppsPage() {
               hesapları yönettiğiniz sürece uygulamanın geliştirme modunda kalması yeterlidir.
             </Notice>
           </div>
-          <div className="grid items-start gap-4 lg:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
             {apps.isLoading
               ? [0, 1, 2].map((i) => <Skeleton key={i} className="h-96 rounded-card" />)
               : (apps.data ?? []).map((a) => <AppCard key={a.platform} app={a} />)}
@@ -186,7 +186,10 @@ function AppCard({ app }: { app: PlatformAppDto }) {
   const id = (s: string) => `${app.platform}-${s}`;
 
   return (
-    <Card className="p-5">
+    // Kart, sayfa ızgarasının 8 satırına yayılır (subgrid): başlık, adımlar, konsol linki,
+    // redirect URI, ID, secret, LinkedIn anahtarı, butonlar. Böylece yan yana kartlarda
+    // aynı alanlar aynı hizada başlar. Satır sayısı değişirse row-span-8'i de güncelle.
+    <Card className="row-span-8 grid min-w-0 grid-cols-1 grid-rows-subgrid gap-y-0 p-5">
       <div className="mb-4 flex items-center gap-3">
         <PlatformIcon platform={app.platform as RealPlatform} size={28} />
         <div className="min-w-0 flex-1">
@@ -200,7 +203,12 @@ function AppCard({ app }: { app: PlatformAppDto }) {
           <li key={s}>{s}</li>
         ))}
       </ol>
-      <a href={guide.console} target="_blank" rel="noreferrer" className="mb-4 inline-flex items-center gap-1 text-caption font-medium text-brand-700 hover:underline">
+      <a
+        href={guide.console}
+        target="_blank"
+        rel="noreferrer"
+        className="mb-4 inline-flex items-center gap-1 self-start justify-self-start text-caption font-medium text-brand-700 hover:underline"
+      >
         Geliştirici konsolunu aç <ExternalLink className="size-3" />
       </a>
 
@@ -209,29 +217,39 @@ function AppCard({ app }: { app: PlatformAppDto }) {
         <CopyField value={app.redirectUri} />
       </div>
 
-      <form onSubmit={save} className="space-y-3.5">
-        <Field label={guide.idLabel} htmlFor={id('cid')}>
-          <Input id={id('cid')} required value={clientId} onChange={(e) => setClientId(e.target.value)} autoComplete="off" spellCheck={false} />
-        </Field>
-        <Field
-          label={guide.secretLabel}
-          htmlFor={id('secret')}
-          hint={saved && app.secretHint ? `Kayıtlı (…${app.secretHint}). Değiştirmek için yenisini girin.` : undefined}
-        >
-          <Input
-            id={id('secret')}
-            type="password"
-            required={!saved}
-            value={secret}
-            onChange={(e) => setSecret(e.target.value)}
-            placeholder={saved ? '••••••••' : ''}
-            autoComplete="new-password"
-            spellCheck={false}
-          />
-        </Field>
-        {app.platform === 'LINKEDIN' && (
-          <Switch checked={orgs} onChange={setOrgs} label="Şirket sayfaları (Community Management API onayı gerekir)" />
-        )}
+      {/* contents: form kutu üretmez, alanları doğrudan kartın ızgara satırlarına yerleşir */}
+      <form onSubmit={save} className="contents">
+        <div className="mb-3.5">
+          <Field label={guide.idLabel} htmlFor={id('cid')}>
+            <Input id={id('cid')} required value={clientId} onChange={(e) => setClientId(e.target.value)} autoComplete="off" spellCheck={false} />
+          </Field>
+        </div>
+        <div className="mb-3.5">
+          <Field
+            label={guide.secretLabel}
+            htmlFor={id('secret')}
+            hint={saved && app.secretHint ? `Kayıtlı (…${app.secretHint}). Değiştirmek için yenisini girin.` : undefined}
+          >
+            <Input
+              id={id('secret')}
+              type="password"
+              required={!saved}
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+              placeholder={saved ? '••••••••' : ''}
+              autoComplete="new-password"
+              spellCheck={false}
+            />
+          </Field>
+        </div>
+        {/* Diğer platformlarda boş kalır ama satırı tutar */}
+        <div>
+          {app.platform === 'LINKEDIN' && (
+            <div className="mb-3.5">
+              <Switch checked={orgs} onChange={setOrgs} label="Şirket sayfaları (Community Management API onayı gerekir)" />
+            </div>
+          )}
+        </div>
         <div className="flex items-center gap-2 pt-1">
           <Button type="submit" variant="primary" icon={KeyRound} loading={busy === 'save'} disabled={Boolean(busy)}>
             {saved ? 'Güncelle' : 'Kaydet'}
