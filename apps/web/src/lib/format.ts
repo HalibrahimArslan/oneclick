@@ -20,3 +20,14 @@ export function dayHeading(v: Date) {
   if (isYesterday(v)) return `Dün · ${rest}`;
   return rest.replace(/^./, (c) => c.toLocaleUpperCase('tr'));
 }
+
+/** Gelen kutusu: "şimdi", "5 dk", "3 sa", "dün 14:30", "12 Kas" */
+export function fmtAgo(v: string | Date, now = new Date()) {
+  const t = d(v);
+  const min = Math.floor((now.getTime() - t.getTime()) / 60_000);
+  if (min < 1) return 'şimdi';
+  if (min < 60) return `${min} dk`;
+  if (min < 24 * 60 && isToday(t)) return `${Math.floor(min / 60)} sa`;
+  if (isYesterday(t)) return `dün ${format(t, 'HH:mm')}`;
+  return format(t, t.getFullYear() === now.getFullYear() ? 'd MMM' : 'd MMM yyyy', { locale: tr });
+}

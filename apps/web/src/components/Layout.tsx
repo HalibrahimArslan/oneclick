@@ -5,6 +5,7 @@ import {
   ChevronsUpDown,
   FlaskConical,
   Image,
+  Inbox,
   KeyRound,
   LayoutList,
   LogOut,
@@ -24,16 +25,18 @@ import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { useBranding } from '../lib/branding';
+import { useInbox } from '../lib/queries';
 import { readLocal, writeLocal } from '../lib/storage';
 import { Avatar } from './identity';
 import { cx, IconButton, MenuItem, Popover } from './ui';
 
-const NAV: { group: string; items: { to: string; label: string; icon: LucideIcon; ownerOnly?: boolean }[] }[] = [
+const NAV: { group: string; items: { to: string; label: string; icon: LucideIcon; ownerOnly?: boolean; badge?: 'inbox' }[] }[] = [
   {
     group: 'Yayın',
     items: [
       { to: '/calendar', label: 'Takvim', icon: CalendarDays },
       { to: '/posts', label: 'Gönderiler', icon: LayoutList },
+      { to: '/inbox', label: 'Gelen kutusu', icon: Inbox, badge: 'inbox' },
       { to: '/media', label: 'Medya', icon: Image },
       { to: '/reports', label: 'Raporlar', icon: BarChart3 },
     ],
@@ -142,6 +145,8 @@ function SidebarBody({ collapsed, onToggle }: { collapsed: boolean; onToggle?():
   const { user, workspace, workspaces, selectWorkspace, logout } = useAuth();
   const navigate = useNavigate();
   const { appName } = useBranding();
+  // Varsayılan gelen kutusu listesiyle aynı sorgu: ek istek yapmaz
+  const inboxOpen = useInbox({ status: 'OPEN' }, Boolean(workspace)).data?.counts.open ?? 0;
 
   return (
     <>
@@ -211,11 +216,13 @@ function SidebarBody({ collapsed, onToggle }: { collapsed: boolean; onToggle?():
         {NAV.map((g) => (
           <div key={g.group} className={cx('mb-4 px-3', collapsed && 'px-2')}>
             {!collapsed && <p className="mb-1 px-2.5 text-micro font-medium text-faint">{g.group}</p>}
-            {g.items.filter((i) => !i.ownerOnly || workspace?.role === 'OWNER').map(({ to, label, icon: Icon }) => (
+            {g.items.filter((i) => !i.ownerOnly || workspace?.role === 'OWNER').map(({ to, label, icon: Icon, badge }) => {
+              const count = badge === 'inbox' ? inboxOpen : 0;
+              return (
               <NavLink
                 key={to}
                 to={to}
-                title={collapsed ? label : undefined}
+                title={collapsed ? (count ? `${label} (${count} açık)` : label) : undefined}
                 className={({ isActive }) =>
                   cx(
                     'mb-0.5 flex h-9 items-center gap-2.5 rounded-control px-2.5 text-body transition-colors',
@@ -224,10 +231,19 @@ function SidebarBody({ collapsed, onToggle }: { collapsed: boolean; onToggle?():
                   )
                 }
               >
-                <Icon className="size-4.5 shrink-0" strokeWidth={1.75} />
-                {!collapsed && label}
+                <span className="relative shrink-0">
+                  <Icon className="size-4.5" strokeWidth={1.75} />
+                  {collapsed && count > 0 && <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-brand-600 ring-2 ring-surface" aria-hidden />}
+                </span>
+                {!collapsed && <span className="flex-1">{label}</span>}
+                {!collapsed && count > 0 && (
+                  <span className="rounded-full bg-brand-600 px-1.5 text-micro leading-4.5 font-semibold text-white tabular-nums" aria-label={`${count} açık`}>
+                    {count > 99 ? '99+' : count}
+                  </span>
+                )}
               </NavLink>
-            ))}
+              );
+            })}
           </div>
         ))}
       </nav>

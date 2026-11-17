@@ -10,6 +10,7 @@ import { AccountsController, OAuthController } from './modules/accounts.controll
 import { AuthController } from './modules/auth.controller';
 import { BrandingController } from './modules/branding.controller';
 import { MediaController } from './modules/media.controller';
+import { InboxController } from './modules/inbox.controller';
 import { PostsController } from './modules/posts.controller';
 import { ReportsController } from './modules/reports.controller';
 import { InvitesController, TeamController } from './modules/team.controller';
@@ -48,6 +49,7 @@ const statics = [
     TeamController,
     InvitesController,
     ReportsController,
+    InboxController,
     AccountsController,
     OAuthController,
     MediaController,

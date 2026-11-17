@@ -20,12 +20,14 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  memberships        WorkspaceMember[]
-  sessions           Session[]
-  posts              Post[]            @relation("PostAuthor")
-  approvalsRequested Approval[]        @relation("ApprovalRequester")
-  approvalsDecided   Approval[]        @relation("ApprovalApprover")
-  invitesCreated     Invite[]          @relation("InviteCreator")
+  memberships           WorkspaceMember[]
+  sessions              Session[]
+  posts                 Post[]            @relation("PostAuthor")
+  approvalsRequested    Approval[]        @relation("ApprovalRequester")
+  approvalsDecided      Approval[]        @relation("ApprovalApprover")
+  invitesCreated        Invite[]          @relation("InviteCreator")
+  assignedConversations Conversation[]    @relation("ConversationAssignee")
+  sentMessages          Message[]         @relation("MessageSender")
 
   @@map("users")
 }
@@ -454,9 +456,12 @@ model Conversation {
   status           ConversationStatus @default(OPEN)
   assigneeId       String?            @map("assignee_id") @db.Uuid
   lastMessageAt    DateTime?          @map("last_message_at")
+  // Yorumun yazıldığı gönderi: { mediaId, permalink, caption, thumbnailUrl }
+  context          Json?
   createdAt        DateTime           @default(now()) @map("created_at")
 
   account  SocialAccount       @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  assignee User?               @relation("ConversationAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   messages Message[]
   labels   ConversationLabel[]
 
@@ -479,9 +484,14 @@ model Message {
   authorExternalId String?          @map("author_external_id")
   body             String
   attachments      Json?
+  // Platformda gizlenmiş yorum (yalnızca yazan ve hesap sahibi görür)
+  hidden           Boolean          @default(false)
+  // Panelden yanıt veren kullanıcı (giden mesajlar)
+  sentById         String?          @map("sent_by_id") @db.Uuid
   sentAt           DateTime         @map("sent_at")
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sentBy       User?        @relation("MessageSender", fields: [sentById], references: [id], onDelete: SetNull)
 
   @@unique([conversationId, externalId])
   @@map("messages")

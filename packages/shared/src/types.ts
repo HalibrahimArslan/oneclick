@@ -220,3 +220,51 @@ export interface ReportDto {
   /** Bağlı hesaplar ve istatistik düzeyi (rapor sayfasındaki açıklamalar için) */
   accounts: { id: string; name: string; platform: Platform; insights: InsightsLevel }[];
 }
+
+// --- Birleşik gelen kutusu (Instagram yorumları) ---
+
+export type ConversationStatus = 'OPEN' | 'DONE';
+
+export interface LabelDto {
+  id: string;
+  name: string;
+}
+
+export interface InboxMessageDto {
+  id: string;
+  direction: 'IN' | 'OUT';
+  /** Platformdaki kullanıcı adı */
+  authorName: string | null;
+  body: string;
+  hidden: boolean;
+  sentAt: string;
+  /** Panelden yanıt veren ekip üyesi */
+  sentBy: { id: string; name: string } | null;
+}
+
+export interface ConversationDto {
+  id: string;
+  status: ConversationStatus;
+  account: { id: string; name: string; username: string | null; avatarUrl: string | null; platform: Platform };
+  /** Yorumun yazıldığı gönderi */
+  context: { permalink: string | null; caption: string | null; thumbnailUrl: string | null } | null;
+  lastMessageAt: string | null;
+  /** Son mesaj (listede önizleme) */
+  preview: Pick<InboxMessageDto, 'direction' | 'authorName' | 'body'> | null;
+  messageCount: number;
+  assignee: { id: string; name: string } | null;
+  labels: LabelDto[];
+}
+
+export interface ConversationDetailDto extends ConversationDto {
+  messages: InboxMessageDto[];
+}
+
+export interface InboxDto {
+  conversations: ConversationDto[];
+  counts: { open: number; mine: number; done: number };
+  /** Yorum okuma izni olmayan Instagram hesapları (yeniden bağlanmalı) */
+  needsReconnect: { id: string; name: string }[];
+  /** Çalışma alanında yorumları okunabilen hesap var mı */
+  hasSupportedAccounts: boolean;
+}

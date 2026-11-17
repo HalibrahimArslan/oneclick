@@ -65,4 +65,14 @@ export class MockProvider implements SocialProvider {
       shares: Math.round(reach * (h[6] % 3) / 100),
     };
   }
+
+  // Gelen kutusu: demo konuşmaları veritabanına tohumlanır; yanıt ve gizleme platforma gitmez
+  async replyToComment() {
+    await sleep(300);
+    return { id: `mock_reply_${randomUUID().slice(0, 8)}` };
+  }
+
+  async setCommentHidden() {
+    await sleep(200);
+  }
 }

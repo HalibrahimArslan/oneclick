@@ -21,12 +21,18 @@ async function main() {
   await c.queues.maintenance.upsertJobScheduler('sweeper', { every: 60_000 }, { name: 'sweeper' });
   await c.queues.maintenance.upsertJobScheduler('demo-cleanup', { every: 15 * 60_000 }, { name: 'demo-cleanup' });
   await c.queues.maintenance.upsertJobScheduler('metrics', { every: 30 * 60_000 }, { name: 'metrics' });
+  await c.queues.maintenance.upsertJobScheduler('inbox-sync', { every: 5 * 60_000 }, { name: 'inbox-sync' });
 
   const maintenanceWorker = new Worker(
     MAINTENANCE_QUEUE,
     async (job) => {
       if (job.name === 'token-refresh') return refreshExpiringTokens();
       if (job.name === 'sweeper') return sweepLostJobs();
+      if (job.name === 'inbox-sync') {
+        const r = await c.inbox.syncAll();
+        if (r.newMessages || r.failed) log(`gelen kutusu: ${r.newMessages} yeni yorum${r.failed ? `, ${r.failed} hesapta hata` : ''}`);
+        return r;
+      }
       if (job.name === 'metrics') {
         const r = await c.metrics.refreshDue();
         if (r.checked) log(`istatistik: ${r.updated}/${r.checked} güncellendi${r.failed ? `, ${r.failed} hata` : ''}`);

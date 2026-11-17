@@ -46,6 +46,32 @@ interface SamplePost {
 
 const TIKTOK_OPTS = { privacyLevel: 'PUBLIC_TO_EVERYONE', musicConsent: true, disableComment: false, disableDuet: false, disableStitch: false };
 
+interface DemoThread {
+  status: 'OPEN' | 'DONE';
+  messages: { author?: string; out?: boolean; body: string; hoursAgo: number; hidden?: boolean }[];
+}
+
+const DEMO_THREADS: DemoThread[] = [
+  { status: 'OPEN', messages: [{ author: 'selin.kaya', body: 'Bu filtre kahve hangi çekirdekten yapılıyor? 😍', hoursAgo: 2 }] },
+  { status: 'OPEN', messages: [{ author: 'ayse.tasarim', body: 'Fiyatı ne kadar? Paket olarak da satıyor musunuz?', hoursAgo: 5 }] },
+  {
+    status: 'OPEN',
+    messages: [
+      { author: 'deniz.ak', body: 'Dün Moda şubesinde denedim, harikaydı!', hoursAgo: 30 },
+      { out: true, body: 'Çok teşekkürler Deniz, afiyet olsun 🙏', hoursAgo: 28 },
+      { author: 'deniz.ak', body: 'Hafta sonu da açık mısınız?', hoursAgo: 3 },
+    ],
+  },
+  {
+    status: 'DONE',
+    messages: [
+      { author: 'mert_yildiz', body: 'Kadıköy şubesinde de var mı?', hoursAgo: 40 },
+      { out: true, body: 'Evet Mert, tüm şubelerimizde bulabilirsin ☕', hoursAgo: 38 },
+    ],
+  },
+  { status: 'DONE', messages: [{ author: 'takipci_kazan_99', body: 'Takipçi kazanmak için profilime bak!!! 🔥🔥', hoursAgo: 20, hidden: true }] },
+];
+
 const samplePosts = (): SamplePost[] => [
   {
     brand: 'kahve',
@@ -222,6 +248,49 @@ export class DemoService {
       });
       // Planlanmış örnekler gerçekten kuyruğa girer; zamanı gelince Mock'a "yayınlanır"
       if (p.kind === 'scheduled' && p.when) await this.scheduler.schedulePost(post.id, p.when);
+    }
+
+    await this.seedInbox(accounts.kahveIg, media['kahve-1']);
+  }
+
+  /** Gelen kutusu örnekleri: yayınlanmış Kahve Durağı gönderisinin altındaki yorumlar */
+  private async seedInbox(accountId: string, mediaId: string) {
+    const target = await this.prisma.postTarget.findFirst({ where: { socialAccountId: accountId, status: 'PUBLISHED' } });
+    const asset = await this.prisma.mediaAsset.findUnique({ where: { id: mediaId } });
+    if (!target?.externalPostId || !asset) return;
+    const post = await this.prisma.post.findUniqueOrThrow({ where: { id: target.postId } });
+    const context = {
+      mediaId: target.externalPostId,
+      permalink: null,
+      caption: post.text.slice(0, 300),
+      thumbnailUrl: this.storage.publicUrl(asset.storageKey),
+    } as Prisma.InputJsonValue;
+    const ago = (h: number) => new Date(Date.now() - h * 3600_000);
+
+    for (const t of DEMO_THREADS) {
+      const msgs = t.messages.map((m, i) => ({ ...m, externalId: `demo_c_${randomUUID().slice(0, 8)}_${i}`, sentAt: ago(m.hoursAgo) }));
+      const conv = await this.prisma.conversation.create({
+        data: {
+          socialAccountId: accountId,
+          kind: 'COMMENT_THREAD',
+          externalThreadId: msgs[0].externalId,
+          relatedPostId: post.id,
+          context,
+          status: t.status,
+          lastMessageAt: msgs.reduce((d, m) => (m.sentAt > d ? m.sentAt : d), msgs[0].sentAt),
+        },
+      });
+      await this.prisma.message.createMany({
+        data: msgs.map((m) => ({
+          conversationId: conv.id,
+          externalId: m.externalId,
+          direction: m.out ? ('OUT' as const) : ('IN' as const),
+          authorName: m.out ? 'kahveduragi' : m.author,
+          body: m.body,
+          hidden: Boolean(m.hidden),
+          sentAt: m.sentAt,
+        })),
+      });
     }
   }
 

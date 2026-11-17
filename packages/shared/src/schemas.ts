@@ -138,3 +138,27 @@ export const reportQuerySchema = z
   })
   .refine((q) => new Date(q.to) > new Date(q.from), { message: 'Bitiş tarihi başlangıçtan sonra olmalı' })
   .refine((q) => new Date(q.to).getTime() - new Date(q.from).getTime() <= 400 * 864e5, { message: 'Rapor dönemi en fazla 400 gün olabilir' });
+
+export const inboxQuerySchema = z.object({
+  status: z.enum(['OPEN', 'DONE']).default('OPEN'),
+  accountId: z.string().uuid().optional(),
+  assignee: z.enum(['me', 'unassigned']).optional(),
+  labelId: z.string().uuid().optional(),
+});
+
+/** Instagram yorum sınırı 2.200 karakter */
+export const replySchema = z.object({
+  text: z.string().trim().min(1, 'Yanıt boş olamaz').max(2200, 'Yanıt en fazla 2.200 karakter olabilir'),
+});
+
+export const updateConversationSchema = z.object({
+  status: z.enum(['OPEN', 'DONE']).optional(),
+  assigneeId: z.string().uuid().nullable().optional(),
+  labelIds: z.array(z.string().uuid()).max(10).optional(),
+});
+
+export const hideMessageSchema = z.object({ hidden: z.boolean() });
+
+export const createLabelSchema = z.object({
+  name: z.string().trim().min(1, 'Etiket adı gerekli').max(40),
+});

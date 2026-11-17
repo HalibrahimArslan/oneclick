@@ -5,6 +5,9 @@ import {
   type MetricsInput,
   type PlatformAppCredentials,
   type PostMetrics,
+  type ProviderComment,
+  type ProviderCommentThread,
+  type ProviderMedia,
   type PublishInput,
   type PublishResult,
   type SocialProvider,
@@ -26,7 +29,11 @@ const SCOPES = [
   'business_management',
   // Raporlar: erişim, görüntülenme, kaydetme, paylaşım (beğeni ve yorum instagram_basic ile okunur)
   'instagram_manage_insights',
+  // Gelen kutusu: yorumları okuma, yanıtlama, gizleme
+  'instagram_manage_comments',
 ];
+
+export const IG_COMMENTS_SCOPE = 'instagram_manage_comments';
 
 export const IG_INSIGHTS_SCOPE = 'instagram_manage_insights';
 
@@ -258,5 +265,57 @@ export class InstagramProvider implements SocialProvider {
       }
     }
     return out;
+  }
+
+  // ---------- Gelen kutusu ----------
+
+  async listRecentMedia({ accessToken, account, since }: { accessToken: string; account: PublishInput['account']; since: Date }): Promise<ProviderMedia[]> {
+    const res = await httpRequest<any>(`${this.graph}/${account.externalId}/media`, {
+      query: { fields: 'id,caption,permalink,media_type,media_url,thumbnail_url,timestamp,comments_count', limit: 50, access_token: accessToken },
+    });
+    return (res.data?.data ?? [])
+      .filter((m: any) => new Date(m.timestamp) >= since)
+      .map((m: any) => ({
+        id: String(m.id),
+        permalink: m.permalink ?? null,
+        caption: m.caption ?? null,
+        // Videoda media_url video dosyasıdır; küçük resim thumbnail_url'de
+        thumbnailUrl: (m.media_type === 'VIDEO' ? m.thumbnail_url : m.media_url) ?? null,
+        commentsCount: m.comments_count ?? 0,
+      }));
+  }
+
+  async listComments({ accessToken, mediaId }: { accessToken: string; mediaId: string }): Promise<ProviderCommentThread[]> {
+    const fields = 'id,text,timestamp,username,hidden,from{id,username}';
+    const toComment = (c: any): ProviderComment => ({
+      id: String(c.id),
+      text: c.text ?? '',
+      timestamp: new Date(c.timestamp),
+      username: c.username ?? c.from?.username ?? null,
+      fromId: c.from?.id ? String(c.from.id) : null,
+      hidden: Boolean(c.hidden),
+    });
+    const threads: ProviderCommentThread[] = [];
+    let url: string | null = `${this.graph}/${mediaId}/comments`;
+    let query: Record<string, string | number> | undefined = { fields: `${fields},replies{${fields}}`, limit: 50, access_token: accessToken };
+    // Çok yorumlu gönderide en fazla 5 sayfa (250 üst düzey yorum)
+    for (let page = 0; url && page < 5; page++) {
+      const res: { data: any } = await httpRequest<any>(url, { query });
+      for (const c of res.data?.data ?? []) {
+        threads.push({ root: toComment(c), replies: (c.replies?.data ?? []).map(toComment) });
+      }
+      url = res.data?.paging?.next ?? null;
+      query = undefined; // next adresi tüm parametreleri içerir
+    }
+    return threads;
+  }
+
+  async replyToComment({ accessToken, commentId, text }: { accessToken: string; commentId: string; text: string }) {
+    const res = await httpRequest<any>(`${this.graph}/${commentId}/replies`, { method: 'POST', form: { message: text, access_token: accessToken } });
+    return { id: String(res.data.id) };
+  }
+
+  async setCommentHidden({ accessToken, commentId, hidden }: { accessToken: string; commentId: string; hidden: boolean }) {
+    await httpRequest<any>(`${this.graph}/${commentId}`, { method: 'POST', form: { hide: String(hidden), access_token: accessToken } });
   }
 }

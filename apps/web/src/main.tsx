@@ -16,6 +16,7 @@ import { ClientsPage } from './pages/ClientsPage';
 import { PlatformAppsPage } from './pages/PlatformAppsPage';
 import { ComposerPage } from './pages/ComposerPage';
 import { MediaPage } from './pages/MediaPage';
+import { InboxPage } from './pages/InboxPage';
 import { PostsPage } from './pages/PostsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { TeamPage } from './pages/TeamPage';
@@ -57,6 +58,7 @@ function App() {
       <Route element={<RequireAuth><Layout /></RequireAuth>}>
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/posts" element={<PostsPage />} />
+        <Route path="/inbox" element={<InboxPage />} />
         <Route path="/media" element={<MediaPage />} />
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/accounts" element={<AccountsPage />} />

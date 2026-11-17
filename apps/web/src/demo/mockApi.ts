@@ -19,6 +19,11 @@ import {
   type MediaAssetDto,
   type Platform,
   type PlatformAppDto,
+  type ConversationDetailDto,
+  type ConversationDto,
+  type InboxDto,
+  type InboxMessageDto,
+  type LabelDto,
   type PostDto,
   type PostMetricsDto,
   type ReportDto,
@@ -82,6 +87,15 @@ interface Post {
   mediaIds: string[];
   targets: Target[];
 }
+interface MockConversation {
+  id: string;
+  accountId: string;
+  status: 'OPEN' | 'DONE';
+  assigneeId: string | null;
+  labelIds: string[];
+  context: ConversationDto['context'];
+  messages: InboxMessageDto[];
+}
 interface State {
   user: UserDto;
   workspace: WorkspaceDto;
@@ -89,6 +103,9 @@ interface State {
   accounts: Account[];
   media: Media[];
   posts: Post[];
+  /** Eski demo kayıtlarında yok; ilk erişimde örneklerle doldurulur */
+  conversations?: MockConversation[];
+  labels?: LabelDto[];
 }
 
 let state: State | null = load();
@@ -583,6 +600,145 @@ route('GET', `${W}/reports`, (_m, _b, q): ReportDto => {
   };
 });
 route('POST', `${W}/reports/refresh`, () => ({ checked: 0, updated: 0, failed: 0 }));
+// ---------- Gelen kutusu (Instagram yorumları) ----------
+
+const DEMO_THREADS: { status: 'OPEN' | 'DONE'; messages: { author?: string; out?: boolean; body: string; hoursAgo: number; hidden?: boolean }[] }[] = [
+  { status: 'OPEN', messages: [{ author: 'selin.kaya', body: 'Bu filtre kahve hangi çekirdekten yapılıyor? 😍', hoursAgo: 2 }] },
+  { status: 'OPEN', messages: [{ author: 'ayse.tasarim', body: 'Fiyatı ne kadar? Paket olarak da satıyor musunuz?', hoursAgo: 5 }] },
+  {
+    status: 'OPEN',
+    messages: [
+      { author: 'deniz.ak', body: 'Dün Moda şubesinde denedim, harikaydı!', hoursAgo: 30 },
+      { out: true, body: 'Çok teşekkürler Deniz, afiyet olsun 🙏', hoursAgo: 28 },
+      { author: 'deniz.ak', body: 'Hafta sonu da açık mısınız?', hoursAgo: 3 },
+    ],
+  },
+  {
+    status: 'DONE',
+    messages: [
+      { author: 'mert_yildiz', body: 'Kadıköy şubesinde de var mı?', hoursAgo: 40 },
+      { out: true, body: 'Evet Mert, tüm şubelerimizde bulabilirsin ☕', hoursAgo: 38 },
+    ],
+  },
+  { status: 'DONE', messages: [{ author: 'takipci_kazan_99', body: 'Takipçi kazanmak için profilime bak!!! 🔥🔥', hoursAgo: 20, hidden: true }] },
+];
+
+/** API'deki demo tohumlamasının karşılığı: yayınlanmış Kahve Durağı gönderisinin altındaki yorumlar */
+function inboxState(st: State): { conversations: MockConversation[]; labels: LabelDto[] } {
+  if (!st.conversations) {
+    const account = st.accounts.find((a) => a.platform === 'INSTAGRAM' && a.username === 'kahveduragi');
+    const post = account && st.posts.find((p) => p.targets.some((t) => t.socialAccountId === account.id && t.status === 'PUBLISHED'));
+    const thumb = post?.mediaIds[0] ? st.media.find((m) => m.id === post.mediaIds[0]) : undefined;
+    const context = post ? { permalink: null, caption: post.text.slice(0, 300), thumbnailUrl: thumb ? mediaUrl(thumb) : null } : null;
+    const ago = (h: number) => iso(new Date(Date.now() - h * 3600_000));
+    st.conversations = account
+      ? DEMO_THREADS.map((t) => ({
+          id: uuid(),
+          accountId: account.id,
+          status: t.status,
+          assigneeId: null,
+          labelIds: [],
+          context,
+          messages: t.messages.map((m) => ({
+            id: uuid(),
+            direction: m.out ? ('OUT' as const) : ('IN' as const),
+            authorName: m.out ? 'kahveduragi' : (m.author ?? null),
+            body: m.body,
+            hidden: Boolean(m.hidden),
+            sentAt: ago(m.hoursAgo),
+            sentBy: null,
+          })),
+        }))
+      : [];
+    st.labels = [];
+    save();
+  }
+  return { conversations: st.conversations, labels: (st.labels ??= []) };
+}
+
+function toConversationDto(st: State, c: MockConversation): ConversationDto {
+  const a = st.accounts.find((x) => x.id === c.accountId)!;
+  const last = c.messages.at(-1);
+  const assignee = c.assigneeId === st.user.id ? { id: st.user.id, name: st.user.name } : null;
+  return {
+    id: c.id,
+    status: c.status,
+    account: { id: a.id, name: a.name, username: a.username, avatarUrl: a.avatarUrl, platform: a.platform },
+    context: c.context,
+    lastMessageAt: last?.sentAt ?? null,
+    preview: last ? { direction: last.direction, authorName: last.authorName, body: last.body } : null,
+    messageCount: c.messages.length,
+    assignee,
+    labels: (st.labels ?? []).filter((l) => c.labelIds.includes(l.id)),
+  };
+}
+
+const findConversation = (id: string) => inboxState(s()).conversations.find((c) => c.id === id) ?? fail(404, 'Konuşma bulunamadı');
+const conversationDetail = (c: MockConversation): ConversationDetailDto => ({ ...toConversationDto(s(), c), messages: c.messages });
+
+route('GET', `${W}/inbox`, (_m, _b, q): InboxDto => {
+  const st = s();
+  const { conversations } = inboxState(st);
+  const status = q.get('status') === 'DONE' ? 'DONE' : 'OPEN';
+  const list = conversations
+    .filter((c) => c.status === status)
+    .filter((c) => (q.get('assignee') === 'me' ? c.assigneeId === st.user.id : q.get('assignee') === 'unassigned' ? !c.assigneeId : true))
+    .filter((c) => !q.get('accountId') || c.accountId === q.get('accountId'))
+    .filter((c) => !q.get('labelId') || c.labelIds.includes(q.get('labelId')!))
+    .map((c) => toConversationDto(st, c))
+    .sort((x, y) => (y.lastMessageAt ?? '').localeCompare(x.lastMessageAt ?? ''));
+  return {
+    conversations: list,
+    counts: {
+      open: conversations.filter((c) => c.status === 'OPEN').length,
+      mine: conversations.filter((c) => c.status === 'OPEN' && c.assigneeId === st.user.id).length,
+      done: conversations.filter((c) => c.status === 'DONE').length,
+    },
+    needsReconnect: [],
+    hasSupportedAccounts: true,
+  };
+});
+route('GET', `${W}/inbox/:id`, ([, , id]) => conversationDetail(findConversation(id)));
+route('POST', `${W}/inbox/:id/reply`, ([, , id], body) => {
+  const c = findConversation(id);
+  const text = String(body?.text ?? '').trim();
+  if (!text) badRequest('Yanıt boş olamaz');
+  c.messages.push({ id: uuid(), direction: 'OUT', authorName: 'kahveduragi', body: text.slice(0, 2200), hidden: false, sentAt: iso(new Date()), sentBy: { id: s().user.id, name: s().user.name } });
+  c.status = 'DONE';
+  return conversationDetail(c);
+});
+route('PATCH', `${W}/inbox/:id`, ([, , id], body) => {
+  const c = findConversation(id);
+  if (body?.status === 'OPEN' || body?.status === 'DONE') c.status = body.status;
+  if (body?.assigneeId !== undefined) c.assigneeId = body.assigneeId === s().user.id ? s().user.id : null;
+  if (Array.isArray(body?.labelIds)) c.labelIds = body.labelIds.filter((x: string) => inboxState(s()).labels.some((l) => l.id === x));
+  return conversationDetail(c);
+});
+route('POST', `${W}/inbox/messages/:mid/hide`, ([, , mid], body) => {
+  const c = inboxState(s()).conversations.find((x) => x.messages.some((m) => m.id === mid)) ?? fail(404, 'Yorum bulunamadı');
+  const m = c.messages.find((x) => x.id === mid)!;
+  if (m.direction === 'OUT') badRequest('Kendi yanıtınız gizlenemez');
+  m.hidden = Boolean(body?.hidden);
+  return conversationDetail(c);
+});
+route('POST', `${W}/inbox/sync`, () => ({ accounts: 1, threads: 0, newMessages: 0, failed: 0 }));
+route('GET', `${W}/labels`, () => [...inboxState(s()).labels].sort((a, b) => a.name.localeCompare(b.name, 'tr')));
+route('POST', `${W}/labels`, (_m, body): LabelDto => {
+  const name = String(body?.name ?? '').trim().slice(0, 40);
+  if (!name) badRequest('Etiket adı gerekli');
+  const { labels } = inboxState(s());
+  const existing = labels.find((l) => l.name === name);
+  if (existing) return existing;
+  const l = { id: uuid(), name };
+  labels.push(l);
+  return l;
+});
+route('DELETE', `${W}/labels/:id`, ([, , id]) => {
+  const st = inboxState(s());
+  s().labels = st.labels.filter((l) => l.id !== id);
+  for (const c of st.conversations) c.labelIds = c.labelIds.filter((x) => x !== id);
+});
+
 route('POST', `${W}/posts/:id/approve`, () => fail(409, 'Bu gönderi onay beklemiyor'));
 route('POST', `${W}/posts/:id/reject`, () => fail(409, 'Bu gönderi onay beklemiyor'));
 route('GET', `${W}/platforms`, () => (['INSTAGRAM', 'TIKTOK', 'LINKEDIN'] as Platform[]).map((platform) => ({ platform, configured: false })));

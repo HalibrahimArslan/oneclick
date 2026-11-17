@@ -73,6 +73,37 @@ export interface SocialProvider {
   getAccountCapabilities?(input: { accessToken: string; account: PublishInput['account'] }): Promise<Record<string, unknown>>;
   /** Yayınlanmış gönderinin istatistiği. Platform izin vermiyorsa uygulanmaz. */
   fetchMetrics?(input: MetricsInput): Promise<PostMetrics>;
+
+  // ---------- Gelen kutusu (yorumlar). Platform izin vermiyorsa uygulanmaz. ----------
+  /** Hesabın `since` sonrasındaki gönderileri ve yorum sayıları */
+  listRecentMedia?(input: { accessToken: string; account: PublishInput['account']; since: Date }): Promise<ProviderMedia[]>;
+  /** Gönderideki üst düzey yorumlar ve yanıtları */
+  listComments?(input: { accessToken: string; mediaId: string }): Promise<ProviderCommentThread[]>;
+  /** Üst düzey yoruma yanıt yazar */
+  replyToComment?(input: { accessToken: string; commentId: string; text: string }): Promise<{ id: string }>;
+  setCommentHidden?(input: { accessToken: string; commentId: string; hidden: boolean }): Promise<void>;
+}
+
+export interface ProviderMedia {
+  id: string;
+  permalink: string | null;
+  caption: string | null;
+  thumbnailUrl: string | null;
+  commentsCount: number;
+}
+
+export interface ProviderComment {
+  id: string;
+  text: string;
+  timestamp: Date;
+  username: string | null;
+  fromId: string | null;
+  hidden: boolean;
+}
+
+export interface ProviderCommentThread {
+  root: ProviderComment;
+  replies: ProviderComment[];
 }
 
 export interface MetricsInput {

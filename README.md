@@ -270,7 +270,7 @@ Vercel'de repoyu içe aktarmanız yeterli. Kök dizindeki `vercel.json` kurulum 
 - [x] Beyaz etiket: kendi logonuz, adınız ve renkleriniz
 - [x] Onay akışı ve ekip davetleri
 - [x] Raporlar ve gönderi istatistikleri
-- [ ] Birleşik gelen kutusu: yorum ve mesajlar tek ekranda
+- [x] Birleşik gelen kutusu: Instagram yorumları tek ekranda (DM sonraki adım)
 
 ---
 
